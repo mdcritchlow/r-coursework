@@ -1,0 +1,65 @@
+---
+title: "Decision Trees"
+author: "Maggy Critchlow"
+date: "2/10/2021"
+output:
+  html_document:
+    theme: yeti
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data and Required Packages
+
+```{r echo=T, message = FALSE, warning = FALSE}
+library(tidyverse)
+library(C50)
+library(caret)
+mushroom <- read_csv("mushroomsClean.csv")
+mushroom <- mushroom %>% mutate(across(where(is_character),as_factor))
+head(mushroom)
+```
+
+This is a data set which measures various characteristics of mushrooms, and also classifies them as either poisonous or edible. The goal is to see if we can use these factors to effectively and accurately predict if a mushroom will be delicious or deadly.
+
+## Decision Tree Model
+
+```{r echo=T}
+shroom.model <- C5.0(toxicity~.,data=mushroom)
+summary(shroom.model)
+```
+
+This is kind of interesting. Apparently the spore color is a useful distinction. This model also did an overall good job of accurately classifying the mushrooms, although the 72 poisonous mushrooms that the model classified as edible are a bit concerning. Before cross validating, though, it's not worth putting too much stake in this.
+
+## Decision Tree Cross Validation
+
+I decided to use the `caret` package for the cross-validation. I initially made the mistake of attempting to run LOOCV on this data set, but after waiting for 40 minutes and listening to my computer sound like it was trying to launch itself into space, I canceled and reevaluated. Lesson learned: always take a peek at the dimensions of the data first. I decided to do a k-fold cross validation instead.
+
+```{r echo=T}
+mushroomcontrol <- trainControl(method = "cv", number = 10)
+mushroom.caret <- train(toxicity~., data = mushroom, method = "C5.0", trControl = mushroomcontrol)
+```
+
+I'm not sure what I'm doing wrong (or maybe this is normal just due to the size of the data), but the output for this function is ridiculously long. It shows all of the trials and I'm not entirely sure how to get it to just show the best one. Instead I'll show the confusion matrix and the results of the cross-validation, which show both accuracy and kappa values.
+
+```{r echo=T}
+confusionMatrix(mushroom.caret)
+```
+
+98% accuracy is really good. This appears to match up relatively well with the unvalidated model above. Both show around a 2% error rate. I'd say that the misclassification of poison mushrooms as edible is still a big concern, though.
+
+```{r echo=T}
+summary(mushroom.caret$results)
+```
+
+Summary statistics show consistently high accuracy and kappa across the trials, which is a good indication that this model is robust and effective at predicting non-training data.
+
+## Discussion
+
+Decision trees provide a useful way to classify data, and have the benefit of the "rules" being clearly visible. Maybe this model could be pruned some, and adjusting the costs associated with misclassification could make it so nobody accidentally downs a poisonous mushroom. I will work with the `caret` package a bit more to figure out how to not show every single trial in the summary.

@@ -1,0 +1,112 @@
+---
+title: "k Nearest Neighbors"
+author: "Maggy Critchlow"
+date: "1/27/2021"
+output:
+  html_document:
+    theme: yeti
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Required Packages and Data
+
+```{r echo=T, message = FALSE, warning = FALSE}
+library(tidyverse)
+library(scales)
+library(class)
+library(caret)
+fish <- read_csv("fishcatch.csv")
+```
+
+This data set includes several fish characteristics that could be useful in predicting fish type. We will be building a model that will hopefully accurately tell us what type of fish we have, based on the similarities between our unknown fish and its nearest neighbors in plotting space.
+
+### Scale-ing the data
+
+Something something fish have scales and we're scaling our data.
+
+```{r echo=T}
+fish.comp <- fish %>% 
+  drop_na() %>%
+  filter(common_name %in% c("bream","perch","pike")) %>%
+  mutate(common_name = factor(common_name)) %>%
+  select(common_name,
+         weight_g,
+         length_nose2tail_end_cm,
+         height_cm,
+         width_cm) %>%
+  mutate(across(2:5, rescale))
+head(fish.comp)
+# Randomize order of data
+rowShuffle <- sample(x = 1:nrow(fish.comp),size = nrow(fish.comp),replace = FALSE)
+# Apply to the dataset we will use
+fish.data <- fish.comp[rowShuffle,]
+head(fish.data)
+```
+
+## It's a Beautiful Day in This Neighborhood
+
+As it turns out, the `caret` package can help inform the ideal number for k - that is, how many neighbors should be included for the most accurate model. It's also very simple to set up. 
+
+```{r echo=T}
+set.seed(4)
+# Using LOOCV as a validation method
+fishcontrol <- trainControl(method = "LOOCV")
+fish.knn <- train(common_name ~ weight_g + length_nose2tail_end_cm + height_cm + width_cm, data = fish.data, 
+                      method = "knn", 
+                      trControl = fishcontrol)
+fish.knn
+```
+
+It looks like `k = 5` is the clear winner here. A kappa value of 0.72 shows that a k of this value performs largely better at predicting than a random assignment would, and the accuracy is also quite high at over 87%. Unfortunately, I couldn't figure out how to find all of the other interesting information, such as the confusion matrix, from this method, and so I'll go ahead and split this into training and testing data and follow the whole process.
+
+## Won't You Be My Neighbor?
+
+Before we can start predicting, we need to remove the common names from the data set, and assemble the training and testing datasets. But first, it's worth taking a look at the frequency of each type of fish.
+
+```{r echo=T}
+fish.counts <- fish.data %>% count(common_name) %>% mutate(freq = n / sum(n))
+fish.counts
+```
+
+Kind of interesting that we have so many perch in this dataset, and that it's relatively unbalanced. Fortunately, kNN is able to handle data like this, but it might be something to keep in mind for analysis later.
+
+```{r echo=T}
+fishnames <- fish.data %>% pull(common_name)
+fish.data <- fish.data %>% select(-common_name)
+# 10 rows seems like a good amount of testing data
+fish.train <- fish.data[1:31,]
+fish.train.labels <- fishnames[1:31]
+fish.test <- fish.data[32:41,]
+fish.test.labels <- fishnames[32:41]
+```
+
+### kNN Analysis
+
+```{r echo=T}
+set.seed(6)
+fish.pred <- knn(train = fish.train, test = fish.test, cl = fish.train.labels, k = 5)
+table(fish.pred)
+tibble(preds = fish.pred, truth = fish.test.labels)
+```
+
+Wow, the model really likes perch for some reason.
+
+### Confusion Matrix
+
+```{r echo=T}
+cm <- confusionMatrix(data = fish.pred, reference = fish.test.labels)
+cm
+```
+
+The kappa value being so much worse for this version of the model (0.42 vs 0.73 for the LOOCV model) stood out to me right away. The accuracy is relatively close, at least. I'm going to guess that these differences are due to the relatively small data set, and as a result, the fact that I withheld a relatively large portion of the dataset for testing. The LOOCV gets to use more data points (40 versus 31) and tests multiple times, so it's not surprising that it would have better statistics. 
+
+## Discussion
+
+Overall, k Nearest Neighbors was pretty effective at predicting the type of an unknown fish based on how similar it was in these measurements. An accuracy of 0.7 shows that the fish were correctly predicted 70% of the time. One thing that stood out to me in the results was that the model wrongly predicted perch for both bream and pike, but always correctly predicted perch for actual perch. This makes me wonder if perch have a wider physical range of the characteristics measured, like weight and length, while maybe bream and pike are more clustered at either extreme of these measurements. The fancy 3D plot on the assignment page looks like this might be the case? Another possible explanation is that there were so many more perch represented in the dataset than the other species. I'm sure these not easy or cheap measurements to collect, so getting more data might not be possible, but it could help improve the accuracy. In addition, maybe adding some more predictor variables (or even replacing some of the existing variables) could improve the accuracy and the specificity for perch. 

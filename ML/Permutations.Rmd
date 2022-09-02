@@ -1,0 +1,94 @@
+---
+title: "Permutations"
+author: "Maggy Critchlow"
+date: "1/12/2021"
+output:
+  html_document:
+    theme: yeti
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Required Packages and Data
+
+```{r echo=T, message=FALSE, warning=FALSE}
+library(tidyverse)
+rollSummary <- tibble(value = 1:6,
+                      n = c(8,9,18,7,8,10)) 
+rollSummary
+```
+
+The above object contains the results from rolling a die 60 times. We're aiming to find out, using a permutation test, the probability of obtaining these results if this isn't a cheaty die.
+
+## A Dice-y Situation
+
+Fortunately, this goal isn't too difficult. It only requires slightly modifying the code presented in class. First, we'll calculate the $\chi$^2^ for the observed data.
+
+```{r echo=T}
+n <- 60
+Expected <- rep(10,6)
+Observed <- rollSummary$n
+obsXsq <- sum((Observed - Expected)^2 / Expected)
+obsXsq
+```
+
+Sticking with the 1000 permutations, a loop can be set up as follows. This follows essentially the same setup as the fuzzy alpaca example, mixed with the simulated fair die roll code.
+
+```{r echo=T}
+possibleValues <- seq(1,6,by=1)
+m <- 1e3
+XStatPermute <- numeric()
+set.seed(1)
+for(i in 1:m){
+  ranRolls <- tibble(value=sample(x = possibleValues,
+                                  size = n,
+                                  replace = TRUE)) 
+  ranRollsSummary <- ranRolls %>% count(value)
+  ranRollsSummary
+  XStatPermute[i] <- sum((ranRollsSummary$n - Expected)^2 / Expected)
+}
+head(XStatPermute)
+```
+
+Success!
+
+## Know When to Hold 'Em, Know When to Fold 'Em
+
+The next step is calculating the p-value, or the probability that we would obtain our results if the die was actually fair.
+
+```{r echo=T}
+pval <- sum(XStatPermute > obsXsq) / m
+pval
+```
+
+This indicates that 149 randomizations, out of 1000, had a higher $\chi$^2^ value than our observed one. If we're sticking with statistical convention, this p-value is greater than 0.05, and so we would fail to reject the null hypothesis that our results are significantly diffent than random rolls of a fair die. But with approximately 85% of the simulated results having a lower $\chi$^2^ value, I wouldn't be surprised at a gambler walking away.
+
+## Density Visualization
+
+```{r echo=T}
+plot1 <- ggplot() + 
+  geom_density(aes(x = XStatPermute), fill = "#4978c4", alpha = 0.8) + 
+  geom_vline(xintercept = obsXsq, color="black", linetype="dashed") + 
+  geom_point(aes(x = obsXsq, y = 0.01), size = 3, pch = 9,color="black") + 
+  labs(title = "Random Dice Simulation", y="Density", x="Chi-Squared Value") + theme_classic() +
+  theme(legend.position="none") 
+plot1
+```
+
+Like the p-value, this shows an observed value that is not wildly different from the simulated values, but doesn't exactly fall right in the middle of the distribution.
+
+## Die-secting Permutations
+
+I promise that's it for the awful headings.
+
+Is the die fair? The stats say yes. With an alpha of 0.05, we'd fail to reject the null hypothesis. Without going too far off-topic, if we were really concerned about identifying an unfair die, we could determine the probability of a type II (false negative) error and set a different alpha that way. In addition, although this result is unlikely, it's certainly far from impossible. A fair coin can land on heads 10 (or 50, or 100) times in a row, after all. But I would understand why someone might ask the question after seeing the results.
+
+Out of curiosity, I changed `m` to run the simulation 10,000 times. It changed my results slightly (p = 0.139), but I wouldn't consider this a meaningful difference. 1000 permutations should be sufficient to get an idea of what a truly random data set (which we would expect with a fair die) would look like. 
+
+The permutation test provides a straightforward, assumption-free method to test a hypothesis using resampling methods. Using randomization, we are able to come up with a probability of an observed result if that result was due to chance.

@@ -1,0 +1,87 @@
+---
+title: "Cross Validation"
+author: "Maggy Critchlow"
+date: "1/20/2021"
+output:
+  html_document:
+    theme: united
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Required Packages and Data
+
+```{r echo=T, message=FALSE, warning=FALSE}
+library(palmerpenguins)
+library(caret)
+library(tidyverse)
+data("penguins")
+```
+
+## Wrangling the data
+
+Full credit for this goes to Skyler E on the Discord message board, who recommended dropping sex as a variable from the dataset (removing most of the NA's), and then removing the remainder through the `drop(na)` command. This preserves a larger portion of the dataset, meaning that more of these cute little penguins were not measured in vain. Genius. I feel so fortunate to have such smart classmates!
+
+```{r echo=T}
+penguins.comp <- penguins %>%
+  select(-sex) %>%
+  drop_na()
+```
+
+## Unvalidated Model
+
+```{r echo=T}
+lm.penguins <- lm(body_mass_g ~ bill_length_mm + species , data = penguins.comp)
+summary(lm.penguins)
+```
+
+Fitting a regular linear model to this data indicates that this model fits the data pretty well (actually, very well for a real-world dataset like this). Bill length and species are good predictors of body weight in these three species of penguins. However, before we can confidently start predicting penguin masses from these other factors, it's important to test this model and make sure its effectiveness applies beyond the data used to build the model. Before I do that, however, I will calculate the root mean squared error (RMSE) and the mean absolute error (MAE), which will provide some useful benchmarks to compare the validated and non-validated models.
+
+### Calculating RMSE and MAE
+
+#### Root Mean Squared Error
+
+```{r echo=T}
+rmse.lm <- sqrt(mean(residuals(lm.penguins)^2))
+rmse.lm
+```
+
+#### Mean Absolute Error
+
+```{r echo=T}
+mae.lm <- mean(abs(lm.penguins$residuals))
+mae.lm
+```
+
+## Leave-one-out Cross Validation
+
+I decided to try leave-one-out cross validation. I chose this over k-fold because this is not an especially big dataset, and also I wanted to try something a little different and get the hang of the caret package. Fortunately, my computer didn't angrily shake its fist at me and handled this without a problem.
+
+```{r echo=T}
+# Setting parameters for the model
+fitcontrol <- trainControl(method = "LOOCV", number = 342)
+# Running the LOOCV
+glm.penguins <- train(body_mass_g ~ bill_length_mm + species, data = penguins.comp, 
+              method = "glm", 
+              trControl = fitcontrol)
+glm.penguins
+# Save results to a dataframe
+glm.stats <- glm.penguins$results
+```
+
+Interesting...the results don't look too different from our original model. We'll dive into this a bit more in the next section.
+
+## Comparison and Discussion
+
+Model                          | R^2^                   | MAE               | RMSE
+-------------------------------|------------------------|-------------------|-------------------
+Unvalidated linear model       | 0.78                   | `r round(mae.lm, digits = 2)`        | `r round(rmse.lm, digits = 2)`
+LOOCV generalized linear model | `r round(glm.stats$Rsquared, digits = 2)` | `r round(glm.stats$MAE, digits = 2)` | `r round(glm.stats$RMSE, digits = 2)`
+
+Both models are fairly similar, and so provide similar R^2^ results. This is expected. The MAE and RMSE are a little higher in our validated model. I would also expect this, because the model isn't being both tested and trained on itself, as it is in the regular linear model. This is just a feeling, more than based on anything I've actually read or seen, but I would imagine that there's not *as* much danger in overfitting a linear model with only two explanatory variables, compared to some of the fancier GAMs or nonlinear models with several explanatory variables. The biggest concern of not performing some sort of model testing is ending up with a model that fits all the noise as well as the underlying pattern in the data, and so it can't be applied to any other data set. I get the sense here that both of these models are not overfit. If I had started this assignment earlier and had some time to read about using GAMs with `caret`, I would try fitting some different models and see if those offer a better fit (either through a higher R^2^ or lower RMSE and MAE). Also outside the scope of this assignment, but it might be interesting to try adding some additional model terms. But all in all, if the goal is to predict penguin weights from bill length and species, I would say that the current model does a pretty darn good job.

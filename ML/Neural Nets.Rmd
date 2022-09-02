@@ -1,0 +1,111 @@
+---
+title: "Neural Networks"
+author: "Maggy Critchlow"
+date: "2/24/2021"
+output:
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Required Packages and Data
+
+```{r echo=T, message = FALSE, warning = FALSE}
+sol <- readRDS("solarPrediction.rds")
+library(tidyverse)
+library(neuralnet)
+library(lubridate)
+library(caret)
+sol <- readRDS("solarPrediction.rds")
+```
+
+### Data Setup
+
+This setup is directly from the lecture notes, and should make it so that the cross-validated model below can be easily compared with the initial model.
+
+```{r echo=T}
+solarDay <- sol %>% 
+  group_by(Date = date(DateTime)) %>% 
+  summarise(kWh_m2 = sum(Radiation * 60 * 5) * 2.77778e-7,
+            avgTemperature = mean(Temperature),
+            minTemperature = min(Temperature),
+            maxTemperature = max(Temperature),
+            sdTemperature = sd(Temperature),
+            rangeTemperature = maxTemperature-minTemperature,
+            avgPressure = mean(Pressure),
+            minPressure = min(Pressure),
+            maxPressure = max(Pressure),
+            sdPressure = sd(Pressure),
+            rangeTemperature = maxPressure-minPressure,
+            avgHumidity = mean(Humidity),
+            minHumidity = min(Humidity),
+            maxHumidity = max(Humidity),
+            sdPHumidity = sd(Humidity),
+            rangeHumidity = maxHumidity-minHumidity,
+            avgSpeed = mean(Speed),
+            minSpeed = min(Speed),
+            maxSpeed = max(Speed),
+            sdPSpeed = sd(Speed),
+            rangeSpeed = maxSpeed-minSpeed,
+            dayLengthHrs = as.numeric(((max(TimeSunSet)-min(TimeSunRise))/60/60)))
+solarDayRescale <- solarDay %>%
+  mutate(across(everything(), scales::rescale))
+```
+
+Now we're ready to build the model and cross-validate it with `caret`.
+
+## Caret Assembly
+
+I decided to do k-fold cross validation with 10 folds. I did this instead of repeatedcv or LOOCV because this is a big data set and I learned from my mistakes on the mushroom dataset, namely that leave one out cross-validation on 8000+ rows of data takes a very long time.
+
+I decided also to go with a combination of between 1 to 5 nodes for each layer. This seems to strike the balance between offering up a range of different combinations for best model fit without going overboard (this ends up being 119 different combinations).
+
+```{r echo=T}
+set.seed(1)
+fit <- trainControl(method = "cv", number = 10)
+tunegrid <-expand.grid(layer1=1:5, layer2=1:5, layer3=1:5) 
+model1<-train(kWh_m2~., data = solarDayRescale, method = "neuralnet", trControl =  fit, tuneGrid = tunegrid)
+```
+
+## Evaluation {.tabset}
+
+The first tab simply shows the optimal number of nodes at each layer, based on the lowest RMSE found with each combination. For a more in-depth look at the different combinations of nodes, check out the second tab. It looks like 5 nodes with the first layer, and 4 nodes for both the second and third layers, offer the highest predictive power. However, it's worth mentioning that this may not be the best model out there, as increasing the number of nodes could result in a higher R^2^/lower RMSE and MAE. With enough computing power and time, one could try out infinite combinations.
+
+### Best Tune
+
+```{r echo=T}
+model1$bestTune
+```
+
+### Fit of All Combinations
+
+```{r echo=T}
+model1
+```
+
+## Table Comparison
+
+Before I can compare these different models, it's necessary to unscale the value for MAE, following the same code that's in the assignment.
+
+```{r echo=T}
+unscale <- function(x){
+  (x * max(solarDay$kWh_m2)) - 
+    (min(solarDay$kWh_m2) + min(solarDay$kWh_m2))
+}
+unscale(0.07724910)
+```
+
+Model | R^2^ | MAE
+------|------|----
+Regression Tree | 0.37 | 1.15
+NN Testing Data | 0.76 | 0.77
+NN 10-fold CV | 0.86 | 0.60
+
+K fold cross validatation improved both the R^2 and MAE values. An R^2 of 0.86 is a really good model with a lot of predictive power, and the low MAE shows that this model is accurate in its predictions when tested. I don't really know what's going on in the black box of this model, but with such good summary stats, do I really care? 

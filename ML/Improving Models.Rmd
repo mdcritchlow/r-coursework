@@ -1,0 +1,109 @@
+---
+title: "Improving Models"
+author: "Maggy Critchlow"
+date: "3/3/2021"
+output:
+  html_document:
+    theme: yeti
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Required Packages and Data
+
+```{r echo=T, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(rpart)
+library(visNetwork)
+library(randomForest)
+library(caret)
+library(ipred)
+fishs <- read_csv("fishcatch.csv")
+```
+
+Before we start, we'll do a little data prep.
+
+```{r echo=T}
+fishFiltered <- fishs %>% select(-std_name, -weight_g, -sex) %>%
+  drop_na() %>%
+  mutate(common_name = factor(common_name))
+fish.shuffle <- sample(x = 1:nrow(fishFiltered),size = nrow(fishFiltered),replace = FALSE)
+fish <- fishFiltered[fish.shuffle,]
+rows2test <- sample(nrow(fish),nrow(fish)*0.5)
+testing.fish <- fish[rows2test,]
+training.fish <- fish[-rows2test,]
+```
+
+## Bagging vs. RPart {.tabset}
+
+Bagging, as the name implies, uses a combination of bootstrapping and aggregation of decision trees to help improve accuracy. As mentioned in the video, bagging uses bootstrapping to repeatedly resample the data set without removal, and creats several decision trees. This helps create a robust model that often misclassifies fewer data points than the RPart decision tree. 
+
+Below is a quick comparison of these two approaches, using the code from the assignment. We can see that the `RPart` decision tree does not handle perch particularly well, but this improves with the bagging method, although it still has some issues. Kappa and accuracy both improve with bagging as well.
+
+### RPart Confusion Matrix
+
+```{r echo=T}
+rpartModel <- rpart(common_name~.,
+                    data=training.fish)
+obs <- testing.fish$common_name
+pred <- predict(rpartModel,testing.fish, type = "class")
+rpartCM <- confusionMatrix(data = pred, reference = obs)
+rpartCM
+```
+
+### Bagging Confusion Matrix
+
+```{r echo=T, message=FALSE, warning=FALSE}
+baggedModel <- bagging(common_name~., 
+                       data=training.fish,
+                       coob = TRUE)
+pred <- predict(baggedModel,testing.fish)
+baggedCM <- confusionMatrix(data = pred, reference = obs)
+baggedCM
+```
+
+## Random Forest vs. Bagging
+
+While random forests can use a bootstrapped dataset, like bagging, random forests use a subset of randomly selected explanatory variables from the dataset to begin creating a "forest" of decision trees. Cross validation methods can be used to choose the optimal number of variables to produce the random forest. The forest is then tested on a withheld dataset and the outcomes from all of the decision trees are averaged. This is used to evaluate its ability to classify unknown data, which is something that decision trees struggle to do. This is also a good approach to avoid overfitting.
+
+Below is the random forest model performance on this same data. Both kappa and accuracy have improved slightly over the bagging and `RPart` approaches, showing that this model is more adaptable to data it has not seen before. Another thing that jumped out at me is that this random forest produced 500 trees. That's some decent-sized woods.
+
+### Random Forest Confusion Matrix
+
+```{r echo=T}
+rfModel <- randomForest(common_name~.,
+                        data=training.fish)
+rfModel
+pred <- predict(rfModel,testing.fish)
+rfCM <- confusionMatrix(data = pred, reference = obs)
+rfCM
+```
+
+## Caret vs. Random Forest
+
+Finally, I'll discuss `caret` versus the random forest. In all of these approaches above, we have used our initially divided data sets to train and then test the models for fit. While this is an effective and simple way to cross-validate a model, it only performs one round of testing and training and the results can depend on which portion of data was randomly withheld, and which was used to build the model. `Caret` provides a way to run several cross-validations, such as k-fold and leave one out cross-validation. This offers a much more robust testing procedure for a model. Doing this also allows for model tuning, which tests different numbers of randomly selected variables for the random forest and finds the optimal one. 
+
+Perhaps unsurprisingly at this point, the `caret` model performs best of all, having the highest accuracy and kappa of all of the models used so far. It also correctly classifies a higher proportion of species. The moral of the story is that more data is better, more tests are better, and that the sky and your computer's fan are the limit when it comes to model building.
+
+### Caret Confusion Matrix
+
+```{r echo=T, message=FALSE, warning=FALSE}
+ctrl <- trainControl(method = "repeatedcv",
+                     number=10,repeats = 10)
+tg <- data.frame(mtry=2:7)
+
+rfCaret <- train(common_name~.,
+                 data=training.fish,
+                 method="rf",
+                 trControl = ctrl,
+                 tuneGrid = tg)
+pred <- predict(rfCaret,testing.fish)
+rfCaretCM <- confusionMatrix(data = pred, reference = obs)
+rfCaretCM
+```

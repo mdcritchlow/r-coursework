@@ -1,0 +1,160 @@
+---
+title: "Bootstrapping"
+author: "Maggy Critchlow"
+date: "1/6/2021"
+output:
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data and Required Packages
+
+```{r echo=T, message = FALSE, warning = FALSE}
+library(tidyverse)
+library(boot)
+library(ggsci)
+birds <- read_csv("KillarneyBirds.csv")
+head(birds)
+```
+
+This data set contains information about the abundance of birds in various forest communities in Ireland. Simpson's Diversity Index is one way of comparing these species composition among different communities.
+
+## Bootstrapping Species Diversity {.tabset}
+
+This may not be the most elegant or graceful way to do this. I will be calculating the SDI for each of the communities shown above, and then using the confidence intervals to compare the sites. The confidence intervals are one way to describe the variance within the samples, and are useful for comparison. If the variance is really large in a 95% confidence interval, it could mean that the sample's calculated diversity index is not an accurate representation of the population, and that the diversity indices are not meaningfully different between these communities.
+
+The following function is the input for the boot function, and is taken from the lecture.
+
+```{r echo=T}
+bird.div <- function(x, indicies) {
+  y <- x[indicies]
+  N <- sum(y)
+  D <- 1 - sum(y*(y-1)) / (N*(N-1))
+  D
+}
+```
+
+I will be using 10000 resampling events for each site. Additional resampling events provide a clearer picture opf the sample distribution ([Joseph 2017](https://towardsdatascience.com/bootstrapping-statistics-what-it-is-and-why-its-used-e2fa29577307)). Below are the bootstrap simulations and confidence intervals for each site. I am also saving the "normal" confidence interval along with the sample index as an object, for reasons which will become clear later. Clicking through the tabs will show the bootstrapping output for each community.
+
+### Oak 1
+
+```{r echo=T}
+boot.oak1 <- boot(birds$Oak1, bird.div, R = 1e4)
+boot.oak1
+ci.oak1 <- boot.ci(boot.oak1)
+boot.ci.oak1 <- cbind(ci.oak1$normal, boot.oak1$t0)
+```
+
+### Oak 2
+
+```{r echo=T}
+boot.oak2 <- boot(birds$Oak2, bird.div, R = 1e4)
+boot.oak2
+ci.oak2 <- boot.ci(boot.oak2)
+boot.ci.oak2 <- cbind(ci.oak2$normal, boot.oak2$t0)
+```
+
+### Oak 3
+
+```{r echo=T}
+boot.oak3 <- boot(birds$Oak3, bird.div, R = 1e4)
+boot.oak3
+ci.oak3 <- boot.ci(boot.oak3)
+boot.ci.oak3 <- cbind(ci.oak3$normal, boot.oak3$t0)
+```
+
+### Yew
+
+```{r echo=T}
+boot.yew <- boot(birds$Yew, bird.div, R = 1e4)
+boot.yew
+ci.yew <- boot.ci(boot.yew)
+boot.ci.yew <- cbind(ci.yew$normal, boot.yew$t0)
+```
+
+### Sitka
+
+```{r echo=T}
+boot.sitka <- boot(birds$Sitka, bird.div, R = 1e4)
+boot.sitka
+ci.sitka <- boot.ci(boot.sitka)
+boot.ci.sitka <- cbind(ci.sitka$normal, boot.sitka$t0)
+```
+
+### Norway
+
+```{r echo=T}
+boot.norway <- boot(birds$Norway, bird.div, R = 1e4)
+boot.norway
+ci.norway <- boot.ci(boot.norway)
+boot.ci.norway <- cbind(ci.norway$normal, boot.norway$t0)
+```
+
+### Mixed
+
+```{r echo=T}
+boot.mixed <- boot(birds$Mixed, bird.div, R = 1e4)
+boot.mixed
+ci.mixed <- boot.ci(boot.mixed)
+boot.ci.mixed <- cbind(ci.mixed$normal, boot.mixed$t0)
+```
+
+### Patchy
+
+```{r echo=T}
+boot.patchy <- boot(birds$Patchy, bird.div, R = 1e4)
+boot.patchy
+ci.patchy <- boot.ci(boot.patchy)
+boot.ci.patchy <- cbind(ci.patchy$normal, boot.patchy$t0)
+```
+
+### Swampy
+
+```{r echo=T}
+boot.swampy <- boot(birds$Swampy, bird.div, R = 1e4)
+boot.swampy
+ci.swampy <- boot.ci(boot.swampy)
+boot.ci.swampy <- cbind(ci.swampy$normal, boot.swampy$t0)
+```
+
+## Forming Data Frame of Confidence Intervals
+
+This is where it gets really ugly. In my defense, a sledgehammer gets the job done for mosquito killing, and I got the graph that I wanted with minimal teeth gnashing.
+
+```{r echo=T}
+ci.bootstrap <- rbind(boot.ci.oak1, boot.ci.oak2, boot.ci.oak3, boot.ci.yew, boot.ci.sitka, boot.ci.norway, boot.ci.mixed, boot.ci.patchy, boot.ci.swampy)
+colnames(ci.bootstrap) <- c("Confidence Interval", "Lower", "Upper", "D")
+rownames(ci.bootstrap) <- c("Oak 1", "Oak 2", "Oak 3", "Yew", "Sitka", "Norway", "Mixed", "Patchy", "Swampy")
+# Create a data frame with all of the confidence intervals and add column and row names
+head(ci.bootstrap)
+class(ci.bootstrap)
+# Oops, it's a matrix and not a data frame
+# Let's fix that
+ci.bootstrap.df <- as.data.frame(ci.bootstrap)
+head(ci.bootstrap.df)
+ci.bootstrap.df$Site <- rownames(ci.bootstrap.df)
+# Make the row names into their own column to work with ggplot
+ci.bootstrap.df <- ci.bootstrap.df %>% mutate(Site = fct_reorder(Site, -D))
+# Reorder so that diversity index is in ascending order
+head(ci.bootstrap.df)
+# Fin
+```
+
+## Visualization of Bootstrapped Confidence Intervals
+
+```{r echo=T}
+plot1 <- ggplot(data = ci.bootstrap.df) + geom_point(aes(x = D, y = Site, color = Site), size = 3) + geom_errorbarh(aes(xmin = Lower, xmax = Upper, y = Site, color = Site)) + theme_bw() + labs(x = "Simpson's Diversity Index", y = "Plant Community") + scale_color_futurama() + theme(legend.position = "none")
+plot1
+```
+
+## Discussion
+
+It's interesting that the Sitka spruce forests had such a wide variance compared to the other sites, and it also had the lowest diversity index. I'm not sure why. Based on what I know about the bootstrapping theory, if a couple/few species have really high counts, a simulation could have resampled those high counts multiple times, which would have drastically increased the diversity index based on how it's calculated. Or vice versa - if the low numbers were resampled a bunch of times and the higher counts were left off, this would drop the SDI. Looking at the heat map on the assingment page, this could be true, although I don't know if I see a huge difference between the Sitka column compared to some of the others. In fact, the Norway one looks more dramatic. I may have gone wrong using the normal confidence interval, and perhaps these error bars look weird because the distributions are not normal. I'm still a bit unclear on the differences between the types of CIs, and the other types of confidence intervals included some extra values that I didn't understand, which steered me away from using one of them. I also don't know why it refused to compute the studentized bootstrap interval. I'm guessing R doesn't like something about the data set (maybe not a normal distribution if it's calculating a t-statistic?) but I'm not sure. Anyways, one interpretation of this plot is that there is no meaningful differences in diversity index that we can identify between these sites. 

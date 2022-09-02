@@ -1,0 +1,117 @@
+---
+title: "Regression and Model Trees"
+author: "Maggy Critchlow"
+date: "2/17/2021"
+output:
+  html_document:
+    theme: united
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data and Required Packages
+
+```{r echo=T, message = FALSE, warning = FALSE}
+library(tidyverse)
+library(caret)
+library(rpart)
+library(Cubist)
+library(visNetwork)
+library(sparkline)
+growth <- read_csv("GrowthTempWater.csv")
+head(growth)
+```
+
+This data set has information on four variables (growth, temperature, and soil water amount) available over the course of the year. The goal is to find out if the data can be split using either model trees or regression trees.
+
+## Data Visualization
+
+Before running these algorithms, it would be interesting to take a look at the data via some plots.
+
+### Growth and Temperature
+
+```{r echo=T}
+plot1 <- ggplot() + geom_point(data = growth, aes(x = Temp, y = Growth), color = "navy") + theme_bw() + labs(title = "Relationship between Temperature and Growth Variables", x = "Temperature (unitless)", y = "Growth (unitless)")
+plot1
+```
+
+Whoa, this looks cool. There's definitely a Goldilocks zone for growth - too hot or too cold is bad for plants. Not surprising, but still interesting to see in plot form. It looks like a pretty strong pattern too - not a lot of scatter around the line (parabola? It's been a bit since I took algebra). 
+
+### Growth and Soil Water
+
+```{r echo=T}
+plot2 <- ggplot() + geom_point(data = growth, aes(x = SoilWater, y = Growth), color = "tomato") + theme_bw() + labs(title = "Relationship between Growth and Soil Water Variables", x = "Soil Water (unitless)", y = "Growth (unitless)")
+plot2
+```
+
+This looks like a decently positive correlation. It's quite obvious that growth increases with soil water, but only up to a point. More water doesn't automatically equal more growth.
+
+### Soil Water and Temperature
+
+```{r echo=T}
+plot3 <- ggplot() + geom_point(data = growth, aes(x = Temp, y = SoilWater), color = "darkorchid4") + theme_bw() + labs(title = "Relationship between Temperature and Soil Water Variables", x = "Temperature (unitless)", y = "Soil Water (unitless)")
+plot3
+```
+
+This doesn't look like much of anything to me. Maybe because this data set is from a tropical rainforest, where by definition, rain is pretty consistent? I'm not entirely sure, but the plots on the assigment page don't show much of a fluctuation in precipitation over the course of the year.
+
+### Growth and Date
+
+```{r echo=T}
+plot4 <- ggplot() + geom_point(data = growth, aes(x = Date, y = Growth), color = "navy") + theme_bw()
+plot4
+```
+
+My first observation from this plot is that it's not a great way to visualize a time series relationship, but on the bright side, I'll be able to learn a lot from the time series class coming up. There might be some relationship between the date and tree growth. Temperature seems like a lot stronger of a predictor, and probably correlates well with date. I'll keep this in mind.
+
+## Linear Model
+
+Because cross validation is king, I'm going to run this model using `caret` and leave one out cross validation.
+
+```{r echo=T}
+# Set up training controls
+fitcontrol <- trainControl(method = "LOOCV", number = 365)
+# Run model
+lm.growth <- train(Growth ~ ., data = growth, method = "lm", trControl = fitcontrol)
+lm.growth
+# Save relevant model statistics to data frame for later use
+lm.stats <- lm.growth$results
+```
+
+Using all of the predictors, this seems like an okay model. R^2^ is not particularly high, and there's some noise in the model from the RMSE and MAE values. Maybe it would be improved if I removed date as a predictor. Out of curiosity, I ran the model with just `SoilWater` and `Temp` as predictors, but the results didn't budge. Interesting.
+
+## Regression Tree
+
+Next up is the regression tree, which will split this continuous data into groups. Oddly enough, there is no regression to be found here despite the name. As above, I'll use the `caret` package to run LOOCV.
+
+```{r echo=T}
+rpart.growth <- train(Growth ~ ., data = growth, method = "rpart", trControl = fitcontrol)
+rpart.growth
+```
+
+To be quite honest, I'm still not sure I understand what the "cp" column represents. It looks like the lowest one has the lowest RMSE and MAE, and highest R^2^ value. We can also take a look at the visualized regression tree.
+
+```{r echo=T}
+visTree(rpart.growth$finalModel)
+```
+
+Interesting, but maybe unsurprising, temperature is very important for determining growth, although it doesn't look like the "Goldilocks pattern" holds as much here. Following that, a higher soil water represents a larger growth, with low temperatures and low available water faring the worst. It'd be interesting to find out if regression trees can have more than 2 branches at a node, as maybe a middle range of temperatures would have higher growth.
+
+## Model Trees
+
+Unlike regression trees, model trees do use regression. Linear regression is used to better account for the residuals in each node. As before, I will use `caret` and LOOCV to run this model. I was unable to figure out how to include only one model for the output, so it's a long way to the bottom. Sorry.
+
+```{r echo=T}
+mt.growth <- train(Growth ~ ., data = growth, method = "cubist", trControl = fitcontrol)
+mt.growth
+# Sorry this part is so long
+summary(mt.growth$finalModel)
+```
+
+So far this one has the best R^2^, RMSE, and MAE values from our trees. It makes sense, since linear regression allows finer control over the residuals and splits than the other techniques. Linear regression performed the worst, which also makes sense since some of the relationships seen in the plots were decidedly not linear. I'm still not really sure what to do with the committees and neighbors information, and how to utilize that within the cross validation framework. But hopefully I'll be able to learn this. At any rate, it seems like we can effectively use the temperature and available soil water to predict growth of these tropical rainforest trees. 
