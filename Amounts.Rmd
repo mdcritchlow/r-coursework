@@ -1,0 +1,72 @@
+---
+title: "Amounts"
+author: "Maggy Critchlow"
+date: "10/6/2020"
+output:
+  html_document:
+    fig_width: 8
+    fig_height: 6
+    theme: yeti
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Required Packages and Data
+
+```{r echo=T, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(RColorBrewer)
+precip <- read_csv("meanDivPcp1901-2000.csv")
+head(precip)
+```
+
+In order to parse out some of the important information lumped in the "Location" category, I followed Dr. Bunn's recommended Tidyverse code to separate these factors into their own columns.
+
+```{r echo=T}
+precip <- precip %>% separate(Location, c("State", "ClimateDivision"), " CD ")
+stateLookup <- tibble(State = state.name, Region = state.region, Division = state.division)
+precip <- precip %>% inner_join(stateLookup)
+head(precip)
+```
+
+## Visualization of Choice
+
+There are a lot of really great options to visualize this data. I enjoy visiting the [R Graph Gallery](r-graph-gallery.com) for inspiration. Unfortunately, sometimes I end up with grand ideas that I don't (yet) have the skill to actually pull off, and such was the case this time. I originally wanted to do a cartograph and chloropleth of this data set, as [seen here](https://www.r-graph-gallery.com/cartogram.html). How cool would that be? After much grumbling and wrangling with the code, I realized that I didn't even have the latitude and longitude for each state, so it probably wasn't going to work. Maybe next time.
+
+The main question that emerged from the data was how precipitation differed by each region, and which states were causing those differences. There are a few different ways to visualize this difference. For this assignment, I ended up choosing a bar graph over a box plot. The main reason I did so was because I felt that the box plot hid some of the information I was interested in, such as which states were standing out within their respective groups. Currently though, there are multiple precipitation values for each state, and so we will need to calculate an average value per state.
+
+## Computing Average Precipitation
+
+Using some Tidy code, it's simple enough to create a new tibble containing the means for each state. 
+
+```{r echo=T}
+precip.mean <- precip %>%   
+group_by(State, Division) %>% 
+summarize(avgprecip = mean(inches)) %>%
+ungroup(State, Division)
+head(precip.mean)
+```
+
+In this case, a bar plot that goes in ascending or descending order makes for a much more compelling graph and will be more useful in highlighting patterns in precipitation by region. However, it's not the way that ggplot will automatically calculate it, and the data has to be re-organized before graphing. The 'forcats' package contained in the tidyverse is one useful way to do so.
+
+```{r echo=T}
+precip.mean <- precip.mean %>% mutate(State = fct_reorder(State, avgprecip))
+```
+
+## Bar Plot of Average Annual Precipitation by State
+
+```{r echo=T}
+p3 <- ggplot() + geom_bar(data = precip.mean, stat = "identity", aes(x = State, y = avgprecip, fill = Division), width=0.6, position = position_dodge(width=0.75)) + coord_flip() + scale_fill_brewer(palette = "Paired") + theme_classic() + labs(y = "Average annual precipitation (inches)", x = "State", fill = "Regional Division", main = "Average Annual Precipitation by State")
+p3
+```
+
+## Discussion
+
+Overall, I'm pleased with how this turned out. There is definitely a visible pattern in precipitation by region, which makes sense, since states that are close together tend to have similar weather patterns. The exception is the West South Central region, but thinking about the states in that region, there is a lot of geographical variation in that part of the country. This might also suggest that Louisiana fits in more with the East South Central division, and that maybe the four states on the Gulf form a more natural group. I am a bit surprised at where some states ended up - I would guess most people don't think of the southern states as particularly rainy. Then again, the patterns of afternoon thunderstorms with short bursts of heavy rain in the summer could add up, compared to the light mist we see here in the Northwest. The states with the lowest totals were expected, as they are largely made up of desert, or are located in rainshadows.
