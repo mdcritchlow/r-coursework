@@ -1,0 +1,155 @@
+---
+title: "Associations"
+author: "Maggy Critchlow"
+date: "11/4/2020"
+output: 
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data and Required Packages
+
+```{r echo=T, message = FALSE, warning = FALSE}
+library(tidyverse)
+library(dslabs)
+library(ggrepel)
+library(ggsci)
+library(gridExtra)
+data(gapminder)
+head(gapminder)
+```
+
+This data set encompasses several variables measuring human wellbeing, such as infant mortality, life expectancy, and GDP. We will be seeing how two variables, Dollars per Day and Infant Survival Rate, have changed globally through the years. These are not existing variables in the table, but are calculated as following:
+
+```{r echo=T}
+gap2010 <- gapminder %>% 
+  filter(year == 2010 & !is.na(gdp) & !is.na(infant_mortality)) %>%
+  mutate(dollars_per_day = gdp/population/365) %>% 
+  mutate(infant_survival_rate = 1 - infant_mortality/1000) 
+head(gap2010)
+```
+
+## Earnings and Infant Mortality in 2010
+
+Before I make this plot, I'm going to set up a custom color palette to ensure uniformity between my 1960 and 2010 graphs. I'm going to use the Futurama color palette from the excellent `ggsci` package.
+
+```{r echo=T}
+col.pal <- pal_futurama(palette = "planetexpress")(5)
+```
+
+```{r echo=T}
+plot1 <- ggplot() + geom_point(data = gap2010, aes(x = dollars_per_day, y = infant_survival_rate, color = continent), alpha = 0.8) + theme_bw() + labs(x = "Dollars per Day", y = "Infant Survival Rate", caption = "Figure 1: Earnings (measured as dollars per day) \n versus infant mortality globally in 2010") + theme(text = element_text(size=13), plot.caption = element_text(hjust = 0), legend.title = element_blank()) + scale_color_futurama()
+plot1
+```
+
+Hmm. This graph does seem to show a positive relationship between earnings (expressed as dollars per day), and infant survival, but many countries clustered around the lower earnings have a wide range of infant survival outcomes. Differences in continents can be broadly observed, with Europe having a much wider range of earnings than Africa. However, this plot is not as helpful as it could be. It has many overlappoing points, and there is almost as much variation within continents as there is between them. Let's try graphing each of the continents separately.
+
+### Earnings and Infant Mortality in 2010 by Country {.tabset}
+
+```{r echo=T}
+gap2010afr <- gap2010 %>% filter(continent == "Africa")
+gap2010am <- gap2010 %>% filter(continent == "Americas")
+gap2010oc <- gap2010 %>% filter(continent == "Oceania")
+gap2010eu <- gap2010 %>% filter(continent == "Europe")
+gap2010asia <- gap2010 %>% filter(continent == "Asia")
+```
+
+After filtering the data, as shown above, it's simple to construct a graph showing dollars per day vs infant survival for each continent. This makes it a little easier to see where differences might lie, although it does make it a little harder to compare the continents directly. I waffled so much on whether to make these plots tabbed or in a grid that I'm now considered a Kellogg's factory. One of the biggest things was matching the axes. In order to put the plots in a grid, the axes should be the same (not doing so would be bad, as the grid would invite the reader to compare each plot directly, despite the scales being different), but making the axes equal caused the same problem seen in the overall graph above, where pretty much all of the countries in Africa and half of Asia were smushed against the y-axis. The current set up with varied axis lengths makes it harder to compare the continents, but some interesting patterns emerge by region within the continents.
+
+#### Africa
+
+```{r echo=T}
+plot.afr <- ggplot() + geom_point(data = gap2010afr, aes(x = dollars_per_day, y = infant_survival_rate, fill = region, shape = region), size = 3, alpha = 0.7) + theme_bw() + labs(x = "Dollars per Day", y = "Infant Survival Rate", caption = "Figure 2.1: Earnings (measured as dollars per day) \n versus infant mortality in Africa in 2010") + theme(text = element_text(size=13), plot.caption = element_text(hjust = 0), legend.title = element_blank()) + scale_shape_manual(values = c(21:25)) + scale_color_locuszoom()
+plot.afr
+```
+
+#### Americas
+
+```{r echo=T}
+plot.am <- ggplot() + geom_point(data = gap2010am, aes(x = dollars_per_day, y = infant_survival_rate, fill = region, shape = region), size = 3, alpha = 0.7) + theme_bw() + labs(x = "Dollars per Day", y = "Infant Survival Rate", caption = "Figure 2.2: Earnings (measured as dollars per day) \n versus infant mortality in the Americas in 2010") + theme(text = element_text(size=13), plot.caption = element_text(hjust = 0), legend.title = element_blank()) + scale_shape_manual(values = c(21:25)) + scale_color_locuszoom()
+plot.am
+```
+
+#### Asia
+
+```{r echo=T}
+plot.asia <- ggplot() + geom_point(data = gap2010asia, aes(x = dollars_per_day, y = infant_survival_rate, fill = region, shape = region), size = 3, alpha = 0.7) + theme_bw() + labs(x = "Dollars per Day", y = "Infant Survival Rate", caption = "Figure 2.3: Earnings (measured as dollars per day) \n versus infant mortality in Asia in 2010") + theme(text = element_text(size=13), plot.caption = element_text(hjust = 0), legend.title = element_blank()) + scale_shape_manual(values = c(21:25)) + scale_color_locuszoom()
+plot.asia
+```
+
+#### Europe
+
+```{r echo=T}
+plot.eu <- ggplot() + geom_point(data = gap2010eu, aes(x = dollars_per_day, y = infant_survival_rate, fill = region, shape = region), size = 3, alpha = 0.7) + theme_bw() + labs(x = "Dollars per Day", y = "Infant Survival Rate", caption = "Figure 2.4: Earnings (measured as dollars per day) \n versus infant mortality in Europe in 2010") + theme(text = element_text(size=13), plot.caption = element_text(hjust = 0), legend.title = element_blank()) + scale_shape_manual(values = c(21:25)) + scale_color_locuszoom()
+plot.eu
+```
+
+#### Oceania
+
+```{r echo=T}
+plot.oc <- ggplot() + geom_point(data = gap2010oc, aes(x = dollars_per_day, y = infant_survival_rate, fill = region, shape = region), size = 3, alpha = 0.9) + theme_bw() + labs(x = "Dollars per Day", y = "Infant Survival Rate", caption = "Figure 2.5: Earnings (measured as dollars per day) \n versus infant mortality in Europe in 2010") + theme(text = element_text(size=13), plot.caption = element_text(hjust = 0), legend.title = element_blank()) + scale_shape_manual(values = c(21:25)) + scale_color_locuszoom()
+plot.oc
+```
+
+## Earnings and Infant Mortality in 1960
+
+```{r echo=T}
+gap1960 <- gapminder %>% 
+  filter(year == 1960 & !is.na(gdp) & !is.na(infant_mortality)) %>%
+  mutate(dollars_per_day = gdp/population/365) %>% 
+  mutate(infant_survival_rate = 1 - infant_mortality/1000) 
+head(gap1960)
+```
+
+Following the same process as used for the 2010 data, we can filter out the `gapminder` data for the year 1960, and compute the "dollars per day" and "infant survival rate" metrics.
+
+```{r echo=T}
+plot2 <- ggplot() + geom_point(data = gap1960, aes(x = dollars_per_day, y = infant_survival_rate, color = continent), alpha = 0.8) + theme_bw() + labs(x = "Dollars per Day", y = "Infant Survival Rate", caption = "Figure 3.1: Earnings (measured as dollars per day) \n versus infant mortality globally in 1960") + theme(text = element_text(size=13), plot.caption = element_text(hjust = 0), legend.title = element_blank()) + scale_color_futurama() + ylim(0.75,1)
+plot2
+```
+
+It already looks quite different than the 2010 data. For one thing, the x-axis is much smaller, indicating much lower earnings (or less inflation) globally and the average infant survival rate looks lower. Best of all though, it looks like the lowest survival rates have been pulled upwards over the years. 
+
+It'll be interesting to compare this and the 2010 graphs side-by-side. This can be achieved using the `grid.arrange` command.
+
+```{r echo=T}
+# Update the 2010 graph so that the y-axis is consistent with 1960, and remove redundant captions and legend
+plot3 <- plot1 + ylim(.75,1) + theme(legend.position = "none") + labs(x = "Dollars per Day", y = "Infant Survival Rate", caption = "Figure 3.2: 2010")
+plot2 <- plot2 + ylim(.75,1) + labs(x = "Dollars per Day", y = "Infant Survival Rate", caption = "Figure 3.3: 1960")
+grid.arrange(plot2, plot3, widths = c(5, 3))
+```
+
+The difference here is pretty cool!
+
+## Paired Plot from 1960 to 2010
+
+For this section, I decided to compare the change in infant survival countries in West Africa. 
+
+```{r echo=T}
+gap.tot <- full_join(gap2010, gap1960)
+gap.wafr <- gap.tot %>% filter(region == "Western Africa")
+```
+
+The original graph I made had a legend on the side, which I thought was confusing. I wanted to try and add the names directly to the graph. Spoiler alert: I did it, but even after much finagling with the annotation data frame, it still looked bad, and with the week that it's been, I just didn't have it in me to keep troubleshooting. I would just like to make sure that my peer reviewer knows that I think this graph is as ugly as you are sure to. Sorry.
+
+```{r echo=T}
+# Create data frame with just 2010 data, to avoid having two labels show up on the grapg
+west.afr <- gap.wafr %>% filter(year == 2010)
+# Set up the data frame to include country name, and the x and y coordinates where the labels should be placed on the graph. Adding 2 to the year helps prevent the text from overlapping the end point of the data, but causes its own quirks as we will see below
+westafr.ann <- data.frame(country = west.afr$country, x = west.afr$year + 2, y = west.afr$infant_survival_rate)
+# Ensure that this worked properly
+head(westafr.ann)
+# Looks good, proceed with plot
+plot6 <- ggplot(data = gap.wafr, aes(x = year, y = infant_survival_rate, group = country)) + geom_line(aes(color = country), alpha = 0.9) + geom_point(aes(color = country)) + theme_bw() + geom_text_repel(data = westafr.ann, aes(x = x, y = y, label = country)) + theme(text = element_text(size=13), plot.caption = element_text(hjust = 0), legend.position = "none") + labs(x = "Year", y = "Infant Survival Rate", caption = "Figure 4: Change in infant survival rate in Western African countries, 1960-2010") + xlim(NA, 2015)
+plot6
+```
+
+At least the information presented on the graph is good, right? All improvements in infant survival, and some countries managed to improve by quite a lot! As we can see, the labels are a total mess. I still personally think that this is an improvement over having the country labels in the legend, but improvement is entirely relative. This is something I can work on in future assignments.

@@ -1,0 +1,194 @@
+---
+title: 'Designapalooza: Proportions Part II'
+author: "Maggy Critchlow"
+date: "10/28/2020"
+output: 
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background, Data and Required Packages
+
+```{r echo=T, message = FALSE, warning = FALSE}
+library(scales)
+library(tidyverse)
+library(ggsci)
+energy <- read_csv("energyConsumption.csv")
+```
+
+For this assignment, I decided to spruce up the plots from my Proportions assignment using both the feedback from my peer reviewers and design rules from Wilke's *Fundamentals of Data Visualization*. I've included tabs under each plot header so that the reader can easily compare the before and after graphs, and see some of the design changes I've made.
+
+## Assigning Colors to Each Energy Source
+
+One of my peer reviewers for this assignment suggested having a uniform color for each variable throughout my graphs, instead of varying color schemes. I agree that this is a good idea. After much teeth gnashing and StackOverflow reading, it looks like the easiest way to do this with the data set is to create a separate vector assigning a color to each factor. I decided to use the "npg" palette from the ggsci package, because I like the color scheme and think it works well with the data. The help page for that package provides an excellent way to display all of the colors in this palette, along with their hex color code:
+
+```{r echo=T}
+show_col(pal_npg("nrc")(10))
+```
+
+Removing the "FF" on each color gives me the six-character hexadecimal code I need to assign colors to each of my variables. One thing I noticed about this color scheme is that there are five blue-green colors, three red colors, and two brown. I thought it would be a nice idea to group the colors by energy category - so "renewables" are all represented by a blue-green color, the fossil fuels are all in a red color, and the nuclear is brown. This gives the colors more of a purpose, as Wilke emphasizes in Chapter 19, than haphazardly assigning them.
+
+It'll be easier to create the vector if I have all of the source and category names that I'll need. 
+
+```{r echo=T}
+levels(factor(energy$Source))
+levels(factor(energy$Category))
+```
+
+One other issue though - this color palette has 10 colors, but I need 11 so that I can color-code the two categories making an appearance in Figure 2.2, Proportions among all sources by year. The extra brown shade that wasn't used for any of the sources will be perfect to represent the nuclear category, but I don't have an extra color for the fossil fuels category. Reusing one of the shades of red could be confusing, and so I ended up choosing a dark red from a hex color picker.
+
+```{r echo=T}
+col.pal <- c("Biomass Energy" = "#4DBBD5", "Geothermal Energy" = "#00A087", "Hydroelectric Power" = "#3C5488", "Solar Energy" = "#8491B4", "Wind Energy" = "#91D1C2", "Coal" = "#DC0000", "Natural Gas" = "#E64B35", "Petroleum" = "#F39B7F", "Nuclear Electric Power" = "#B09C85", "Nuclear" = "#7E6148", "Fossil Fuel" = "#750200")
+```
+
+This custom color palette will replace the others used in my graphs and will ensure consistency across the plots.
+
+## Changes, Updates and Improvements
+
+I made several of the same changes to all of my plots. Rather than listing them out multiple times under each header, I thought I would go ahead and mention them up front:
+
+* **Addition of captions**. Chapter 22 of Wilke's book highlights the importance of figure titles and captions, and my peer reviewer also mentioned adding captions. I prefer the look of the title being included in the caption, and with the Markdown headers, it seems to look better like this.
+
+* **Enlargement of axis text**. I also increased the overall text size of the plot. Chapter 24 says: "Pay attention to your axis labels, axis tick labels, and other assorted plot annotations. Chances are they are too small. In my experience, nearly all plot libraries and graphing softwares have poor defaults. If you use the default values, you’re almost certainly making a poor choice.". Guilty as charged. After some trial and error, I think I've found the appropriate size for these plots, as the text is big enough to read, but not overwhelming and out of proportion. 
+
+* **Removal of the legend title**. In section 22.2, Wilke shows an example of a superfluous legend title, and that made me reconsider the importance of having a title on this plot. I don't think it's really necessary with the updated y-axis labels and the caption, as they provide the necessary descriptions needed to understand the plots.
+
+## Fossil Fuels Proportion
+
+As in the proportions assignment, the data must be converted from raw Btu data to a proportion. This section remains unchanged from that assignment.
+
+```{r echo=T}
+energy.fossil <- filter(energy, Category == "Fossil Fuel")
+energy.fossil.year <- energy.fossil %>% group_by(Source, Year) %>% summarize(Quads = sum(Quads))
+energy.fossil.prop <- energy.fossil.year %>% group_by(Year) %>% mutate(Pct = Quads / sum(Quads))
+energy.fossil.prop <- energy.fossil.prop %>% mutate(Source = fct_reorder(Source, Quads))
+```
+
+I also kept the ascending order on this plot.
+
+### Plots of Fossil Fuels over Time {.tabset}
+
+#### Before
+
+```{r echo=T}
+plot1.old <- ggplot() + 
+  geom_bar(data = energy.fossil.prop, aes(fill = Source, x = Year, y = Quads), position="fill", stat="identity") + theme_classic() + scale_fill_npg() + labs(x = "Year", y = "Proportion of Fossil Fuel Energy Source", fill = "Energy Source")
+plot1.old
+```
+
+#### After
+
+```{r echo=T}
+plot1.new <- ggplot() + 
+  geom_bar(data = energy.fossil.prop, aes(fill = Source, x = Year, y = Quads), position="fill", stat="identity") + theme_classic() + scale_fill_manual(values = col.pal) + labs(x = "Year", y = "Proportion of Fossil Fuel Energy", fill = "Energy Source", caption = "Figure 1.1: Change in proportion of each source of energy in fossil fuel category \n over time.") + theme(text = element_text(size=13), plot.caption = element_text(hjust = 0), legend.title = element_blank())
+plot1.new
+```
+
+## Proportion of Renewables over Time
+
+### Proportions of Renewables by Year
+
+This first set of code is for the plot of just renewables proportions. This is unchanged from the proportions assignment.
+
+```{r echo=T}
+energy.renew <- filter(energy, Category == "Renewable")
+# Filter out the non-renewable energy sources and double-check the data
+head(energy.renew)
+energy.renew.year <- energy.renew %>% group_by(Year, Source, Category) %>% summarize(Quads = sum(Quads))
+energy.renew.prop <- energy.renew.year %>% group_by(Year) %>% mutate(Pct = Quads / sum(Quads))
+energy.renew.prop <- energy.renew.prop %>% mutate(Source = fct_reorder(Source, Quads))
+#Plot of just renewables is seen below
+```
+
+#### Plots  of Renewable Proportions by Year {.tabset}
+
+##### Before
+
+```{r echo=T}
+plot2.old <- ggplot() + geom_bar(data = energy.renew.prop, aes(fill = Source, x = Year, y = Quads), position="fill", stat="identity") + theme_classic() + scale_fill_brewer(palette = "Paired") + labs(x = "Year", y = "Proportion of Renewable Energy", fill = "Source of Renewables") 
+plot2.old
+```
+
+##### After
+
+```{r echo=T}
+plot2.new <- ggplot() + geom_bar(data = energy.renew.prop, aes(fill = Source, x = Year, y = Quads), position="fill", stat="identity") + theme_classic() + scale_fill_manual(values = col.pal) + labs(x = "Year", y = "Proportion of Renewable Energy", caption = "Figure 2.1: Change in proportion of each source of energy in renewable category \n over time.") + theme(text = element_text(size=13), plot.caption = element_text(hjust = 0), legend.title = element_blank())
+plot2.new
+```
+
+### Proportions among all sources by year
+
+This section of code is for the proportions of all energy sources, with the fossil fuel and nuclear soures collapsed into their respective categories. No changes were made here.
+
+```{r echo=T}
+energy.other <- filter(energy, Category != "Renewable")
+# Create a data set with only non-renewables
+energy.other.year <- energy.other %>% group_by(Year, Category) %>% summarize(Quads = sum(Quads))
+energy.other.year$Source <- energy.other.year$Category
+# Replace the source column of non-renewables with their category and ensure that it worked correctly
+head(energy.other.year)
+energy.renew.other <- full_join(energy.other.year, energy.renew)
+# Combine the renewable and modified non-renewable data sets
+head(energy.renew.other)
+energy.renew.other.prop <- energy.renew.other %>% group_by(Year) %>% mutate(Pct = Quads / sum(Quads))
+# Compute the percentages for this data set
+energy.renew.other.prop <- energy.renew.other.prop %>% mutate(Source = fct_reorder(Source, Quads))
+```
+
+Oh I lied, I did change one tiny thing. Both of my peer reviewers thought I should be consistent with the graph ordering, and so I updated the `fct_reorder` line of code to reflect this.
+
+Note that this is the plot where I went rogue (or should I say rouge?) on the color palette and added the extra red to the color palette, for anyone curious. I'm curious to hear if people love it or hate it.
+
+#### Plot of All Sources by Year {.tabset}
+
+##### Before
+
+```{r echo=T}
+plot3.old <- ggplot() + geom_bar(data = energy.renew.other.prop, aes(fill = Source, x = Year, y = Quads), position = "fill", stat = "identity") + scale_fill_aaas() + labs(x = "Year", y = "Proportion of Energy Used", fill = "Energy Source") + theme_classic()
+plot3.old
+```
+
+##### After
+
+```{r echo=T}
+plot3.new <- ggplot() + geom_bar(data = energy.renew.other.prop, aes(fill = Source, x = Year, y = Quads), position = "fill", stat = "identity") + theme_classic() + scale_fill_manual(values = col.pal) + labs(x = "Year", y = "Proportion of Energy Used", caption = "Figure 2.2: Change in proportion of all categories of energy, with sources of \n renewables included, over time.") + theme(text = element_text(size=13), plot.caption = element_text(hjust = 0), legend.title = element_blank())
+plot3.new
+```
+
+## Changes in Energy Use over Time {.tabset}
+
+I decided to keep the graph of each source's proportion of total energy use, rather than as a percentage, in this document. I like it, and I think that the update in colors makes it a little more legible. This section of code remains unchanged, however.
+
+```{r echo=T}
+energy.year <- energy %>% group_by(Year, Source,Category) %>% summarize(Quads = sum(Quads))
+energy.year <- energy.year %>% ungroup(Source)
+energy.year <- energy.year %>% mutate(Source = fct_reorder(Source, Quads))
+```
+
+### Before
+
+```{r echo=T}
+plot4.old <- ggplot() + geom_area(data = energy.year, aes(fill = Source, x = Year, y = Quads), position="stack", stat="identity") + labs(x = "Source", y = "Energy Use (quadrillion Btu)", fill = "Energy Source") + scale_fill_uchicago() + theme_classic()
+plot4.old
+```
+
+### After
+
+```{r echo=T}
+plot4.new <- ggplot() + geom_area(data = energy.year, aes(fill = Source, x = Year, y = Quads), position="stack", stat="identity") + theme_classic() + labs(x = "Source", y = "Energy Use (quadrillion Btu)", caption = "Figure 3.1: Change in proportion of all sources of energy in total energy used \n over time.") + scale_fill_manual(values = col.pal) + theme(text = element_text(size=13), plot.caption = element_text(hjust = 0), legend.title = element_blank())
+plot4.new
+```
+
+## Discussion
+
+I think most of these changes fit better with the design principles outlined in Wilke's book. One thing I wish I could have done is to get rid of the legend completely, as he discusses in the "Redundant coding" chapter (Chapter 20). I wasn't quite sure how to pull this off for Figure 3.1 and 2.2, since some of the proportions of the sources are really small. Because the legend order also matches the order presented in the graph, there's nothing particularly bad about the legends, but it would help to minimize the "ink to data" ratio.
+
+One thing I am slightly concerned about is that my graphs may not be effective for people with colorblindness. I tried to ensure that my palette was non-monotonic, and that at least the shades would make the plots discernible. Originally, I had an idea to find out if there's a way to toggle to a colorblind-friendly color palette on the plots (honestly, I don't love the preset ones in packages like RColorBrewer). It turns out that there is a package, "plotly", that can do this. Unfortunately I ran out of time to put this in my assignment this week, but I'll set a goal to work on this over the rest of the quarter.

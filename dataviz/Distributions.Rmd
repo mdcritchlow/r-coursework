@@ -1,0 +1,73 @@
+---
+title: "Distributions"
+author: "Maggy Critchlow"
+date: "10/14/2020"
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Required Packages and Data
+
+```{r echo=T, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(RColorBrewer)
+penguins <- read_csv("penguins.csv")
+```
+
+This week's data is all about penguins. 
+
+```{r echo=T}
+head(penguins)
+summary(penguins)
+```
+
+These two commands are easy ways to check out the structure of the data and the variables within it. For the numeric variables, we're able to peek at the five-number summary. These values for each variable could be visualized using a box plot, and depending on the questions that emerge from the data, these values could be separated by the categorical variables and compared. While this doesn't offer the same objective evidence as statistical analysis, some interesting patterns and trends in the data can emerge from this. I'd like to find out if bill length varies by penguin species, and one way to answer this is with a color-coded density plot.
+
+## Density Plot
+
+```{r echo=T, message=FALSE, warning=FALSE}
+denselabels <- data.frame(species = c("Adelie", "Chinstrap", "Gentoo"), x = c(35, 55, 48), y = c(0.12, 0.10, 0.12))
+```
+
+R Graph Gallery had the great suggestion of adding text labels to the density curves, rather than just having a legend with corresponding colors. In order to add this using the `geom_text` line in ggplot, we need to create a data frame with the label of choice and their x and y coordinates. These can be layered directly onto the density plot.
+
+```{r echo=T, message=FALSE, warning=FALSE}
+plot1 <- ggplot() + geom_density(data = penguins, aes(x = bill_length_mm, group = species, fill = species), adjust=1.5, alpha=.5) + geom_text(data = denselabels, aes(x = x, y = y, label = species, color = species), size = 4) + xlim(28, 65) + ylim(0.00, 0.15) + scale_fill_brewer(palette = "Dark2") + scale_color_brewer(palette = "Dark2") + theme_classic() + theme(legend.position = "none") + labs(x = "Bill length (mm)", y = "Density", title = "Bill length by species")
+plot1
+```
+
+### Discussion
+
+One benefit of using the density curves is that we can get an idea of the shape of the data - for example, if the data follows a normal distribution, binomial, etc. This is important for statistical analysis, as some tests depend on the assumption that the data is normally distributed, and some models fit other patterns more effectively. In this case, all three of our species have a roughly normal distribution, with most penguins of each species having a similar bill length, and fewer penguins with a bill length that is much higher or lower than the average. This could indicate that these penguins are undergoing stabilized selection. The Adelie penguins tend to have shorter bills than the Gentoo and the Chinstrap penguins, and the latter two penguins are more similar to each other then the Adelie penguins. It would be interesting to compare the other physical measurements to see if this is true across the board. A bird's beak also tends to offer clues to their diet, so comparing the preferred foods of each of these species could help to explain these patterns.
+
+## Quantile-Quantile Plot and Normality
+
+One method to assess normality is the quantile-quantile (Q-Q) plot, where the sample distribution of the data is plotted by a theoretically normal distribution. If the sample was perfectly normally distributed, the location of the points would be identical on both the sample and theoretical distributions, and the graph would show a perfectly straight, 45 degree line. Obviously, this perfect distribution rarely (if ever) exists in the real world, but the Q-Q plot can be used to determine how far the sample distribution deviates from normal.
+
+### Histogram of Flipper Length
+
+```{r echo=T, message=FALSE, warning=FALSE}
+plot2 <- ggplot() + geom_histogram(data = penguins, aes(x = flipper_length_mm), binwidth = 2, fill = "#104a20", color = "#ffffff") + theme_classic() + labs(x = "Flipper length (mm)", y = "Frequency", title = "Flipper Length Distribution in Penguins")
+plot2
+```
+
+Before looking at the Q-Q plot for flipper length, I thought it would be worth taking a look at the histogram to see if there's any obvious patterns in the distribution. No matter the bin width, this is definitely not a normal distribution. At a bin width larger than 10, the data skews left, and with a smaller bin width, it almost looks binomial. This binomial pattern makes me think that there could be a difference in flipper length by sex, and this could be worth investigating further. But for now, we'll check out the Q-Q plot, and see how far this is from a normal distribution.
+
+### Q-Q Plot of Flipper Length
+
+```{r echo=T, message=FALSE, warning=FALSE}
+qq <- qplot(sample = flipper_length_mm, data = penguins) + geom_abline(slope = 10, intercept = 200) + theme_classic() + labs(x = "Theoretical quantiles", y = "Flipper length (mm)", title = "Q-Q Plot of Flipper Length")
+qq
+```
+
+### Discussion
+
+This looks to me like there is some other distribution going on. As we can see in the histogram, higher frequencies occur with the shorter flipper lengths, and fewer penguins have longer flippers. While it's normal (no pun intended) to see some deviation from the straight line at either extreme of the data set, the S-curve of this data set suggests non-normality. If I were going to analyze this data, I would first try grouping the penguins by sex, and seeing if the data is normally distributed within those groupings. Mathematically transforming the data can also help to correct some of these issues while keeping the patterns in the data intact. Some mathematical models can also handle non-normality without an issue, but it is important information to be aware of when running a statistical analysis on the data.

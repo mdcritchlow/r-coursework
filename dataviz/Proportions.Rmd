@@ -1,0 +1,108 @@
+---
+title: "Proportions"
+author: "Maggy Critchlow"
+date: "10/20/2020"
+output: 
+  html_document:
+    theme: yeti
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data and Required Packages
+
+```{r echo=T, message = FALSE, warning = FALSE}
+library(tidyverse)
+library(scales)
+library(RColorBrewer)
+library(ggsci)
+energy <- read_csv("energyConsumption.csv")
+```
+
+## Plot of Fossil Fuels over Time
+
+Before creating this plot, we need to convert the output measurement into a percentage. This is accomplished using the tidy code below.
+
+```{r echo=T}
+energy.fossil <- filter(energy, Category == "Fossil Fuel")
+energy.fossil.year <- energy.fossil %>% group_by(Source, Year) %>% summarize(Quads = sum(Quads))
+energy.fossil.prop <- energy.fossil.year %>% group_by(Year) %>% mutate(Pct = Quads / sum(Quads))
+energy.fossil.prop <- energy.fossil.prop %>% mutate(Source = fct_reorder(Source, Quads))
+```
+
+I decided to order the graph in ascending order, since it was easier to see the changes in proportions this way. Assing a negative sign in front of "Quads" in the above line of code would arrange it in descending order.
+
+```{r echo=T}
+plot1 <- ggplot() + 
+  geom_bar(data = energy.fossil.prop, aes(fill = Source, x = Year, y = Quads), position="fill", stat="identity") + theme_classic() + scale_fill_npg() + labs(x = "Year", y = "Proportion of Fossil Fuel Energy Source", fill = "Energy Source")
+plot1
+```
+
+This is not a terribly surprising result - natural gas useage has increased as a share of fossil fuel output, while coal has decreased. Petroleum appears to have stayed around the same levels. I do wonder if part of this is due to the widespread belief that natural gas is "better" or cleaner than other fossil fuels, which is still prevalent in other parts of the country even as cities like Bellingham are working to phase it out. 
+
+## Plots of Renewables Over Time {.tabset}
+
+I decided to do a couple of different plots to illustrate this change, partly because I was curious about how renewables have changed as a proportion of total energy sources, not just how the renewable options have changed over time. This first set of code mirrors the setup for the fossil fuels graph above.
+
+```{r echo=T}
+energy.renew <- filter(energy, Category == "Renewable")
+# Filter out the non-renewable energy sources and double-check the data
+head(energy.renew)
+energy.renew.year <- energy.renew %>% group_by(Year, Source, Category) %>% summarize(Quads = sum(Quads))
+energy.renew.prop <- energy.renew.year %>% group_by(Year) %>% mutate(Pct = Quads / sum(Quads))
+energy.renew.prop <- energy.renew.prop %>% mutate(Source = fct_reorder(Source, Quads))
+#Plot of just renewables is seen below
+```
+
+A graph with all of the sources of energy was way too busy, but I still wanted to show how the availability of renewables has changed proportionally along with non-renewable sources. The best way to show this that I could think of was to show non-renewables by category (ie fossil fuels and nuclear), but display renewables by source. This required some code wrangling, and there is probably a much less clunky way to achieve this than what I did below, but hey, all roads lead to Rome.
+
+```{r echo=T}
+energy.other <- filter(energy, Category != "Renewable")
+# Create a data set with only non-renewables
+energy.other.year <- energy.other %>% group_by(Year, Category) %>% summarize(Quads = sum(Quads))
+energy.other.year$Source <- energy.other.year$Category
+# Replace the source column of non-renewables with their category and ensure that it worked correctly
+head(energy.other.year)
+energy.renew.other <- full_join(energy.other.year, energy.renew)
+# Combine the renewable and modified non-renewable data sets
+head(energy.renew.other)
+energy.renew.other.prop <- energy.renew.other %>% group_by(Year) %>% mutate(Pct = Quads / sum(Quads))
+# Compute the percentages for this data set
+energy.renew.other.prop <- energy.renew.other.prop %>% mutate(Source = fct_reorder(Source, -Quads))
+```
+
+For this plot, I thought that arranging the data in ascending order made it clearer to see how renewables has increased over time, but I'm interested to see what my peer reviewer thinks.
+
+### Proportions of renewables by year
+
+```{r echo=T}
+plot2 <- ggplot() + geom_bar(data = energy.renew.prop, aes(fill = Source, x = Year, y = Quads), position="fill", stat="identity") + theme_classic() + scale_fill_brewer(palette = "Paired") + labs(x = "Year", y = "Proportion of Renewable Energy", fill = "Source of Renewables") 
+plot2
+```
+
+### Proportions among all sources by year
+
+```{r echo=T}
+plot3 <- ggplot() + geom_bar(data = energy.renew.other.prop, aes(fill = Source, x = Year, y = Quads), position = "fill", stat = "identity") + scale_fill_aaas() + labs(x = "Year", y = "Proportion of Energy Used", fill = "Energy Source") + theme_classic()
+plot3
+```
+
+## Changes in Energy Use Over Time
+
+I left this part to the end because it isn't a proportion in the same way as these other graphs are, but I thought it would be interesting. Energy consumption in the US is not a static number year over year, and so I wanted to take a look at how each of these sources of energy makes up the total energy consumed in the US. 
+
+```{r echo=T}
+energy.year <- energy %>% group_by(Year, Source,Category) %>% summarize(Quads = sum(Quads))
+energy.year <- energy.year %>% ungroup(Source)
+energy.year <- energy.year %>% mutate(Source = fct_reorder(Source, Quads))
+plot4 <- ggplot() + geom_area(data = energy.year, aes(fill = Source, x = Year, y = Quads), position="stack", stat="identity") + labs(x = "Source", y = "Energy Use (quadrillion Btu)", fill = "Energy Source") + scale_fill_uchicago() + theme_classic()
+plot4
+```
+
+Even though it's a bit cluttered and not that useful of a graph on its own, I think this adds some context to the above graphs, but unfortunately it doesn't seem quite as cheerful. Even though renewable useage is going up, this is accompanied by an increase in energy useage across the board.

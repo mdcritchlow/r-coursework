@@ -1,0 +1,90 @@
+---
+title: "Trends"
+author: "Maggy Critchlow"
+date: "11/18/2020"
+output: 
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Required Packages and Data
+
+```{r echo=T, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(plotly)
+library(ggsci)
+prox <- read_csv("3Proxies.csv")
+```
+
+## Bad Graph
+
+```{r echo=T}
+foo <- anscombe %>% select(x4,y4) %>% mutate(x4=jitter(x4,factor=0.1)) %>% rename(y=y4,x=x4)
+plot1 <- ggplot() + geom_smooth(data = foo, aes(x = x, y = y), se = FALSE)
+plot1
+```
+
+This is kind of an ugly graph. One big problem with it is that it's nonlinear, and according to Wilke, it's better to have transformed linear data than the original data if it's nonlinear. Adding the data points to the graph will help show what's going on.
+
+```{r echo=T}
+plot1.points <- ggplot(data = foo, aes(x = x, y = y)) + geom_smooth(se = FALSE) + geom_point()
+plot1.points
+```
+
+Putting it mildly, I would say that this does not represent the original data well. There's one data point that is extremely different than all of the others, and looks to have both high leverage and influence. I tried several different transformations, such as the square root and log of both variables, to try and fix this, but to no avail. I really want to throw out this data point, but have no justification for doing so. There's probably a really obvious solution that I'm missing here.
+
+## Proxy Data
+
+I'm not sure if I strayed too far off the assignment brief here, but if I did, at least it was an interesting trip. After looking at the initial plot for the assignment, I thought it might be fun to show how the temperature has changed over time, relative to where it was 20,000 years ago. 
+
+### Setting up the data
+
+It may be obvious from my description above, but I had a lot of trouble articulating what I wanted to do in order to Google it. As a result, I may have done this the ugliest, most inefficient way possible. Skip over this section if you are sensitive to inelegant coding.  
+
+```{r echo=T}
+# Filtering the data set to create separate data frames for each proxy site
+ant <- prox %>% filter (Proxy == "Antarctica")
+car <- prox %>% filter(Proxy == "Cariaco Basin")
+green <- prox %>% filter(Proxy == "Greenland")
+# Determine temperature at 20,000 years ago for each site, and use this as relative zero
+tail(ant)
+tail(car)
+tail(green)
+# Create a new column to represent the difference from this relative zero
+ant$Difference <- ant$C + 64.40
+car$Difference <- car$C - 23.3
+green$Difference <- green$C + 45.9226
+# Merge all of these data frames into one
+proxy.inter <- full_join(ant, car)
+proxy <- full_join(proxy.inter, green)
+```
+
+### Plot of Proxies Changing over Time
+
+I promised I'd try out the `plotly` package at some point this quarter, and so here it is. This is definitely the most simplistic use of it, but being able to interact with this plot provides some useful information. One option allows the user to hover over the graph and compare all three y-values for the given x-value, which is pretty useful for comparing.
+
+```{r echo=T}
+plot2 <- ggplot(data = proxy, aes(x = kya, y = Difference, color = Proxy)) + geom_line() + theme_bw() + labs(x = "Thousands of years ago", y = "Change over time (Celsius)", title = "Figure 2.1: Line Graph of Proxies' Change over Time") + scale_color_npg() + theme(legend.title = element_blank())
+p2 <- ggplotly(plot2)
+p2
+```
+
+### Plot of Proxies with Loess Function
+
+Here's the same plot as above with the `geom_smooth` function. This makes it easier to see the trends without so much of the noise present in the line graph. The dramatic increase in temperature measured in Greenland over time is really apparent here.
+
+```{r echo=T}
+plot3 <- ggplot(data = proxy, aes(x = kya, y = Difference, color = Proxy)) + geom_smooth(se = FALSE) + theme_bw() + labs(x = "Thousands of years ago", y = "Change over time (Celsius)", title = "Figure 2.2: Trend Line of Proxies' Change over Time") + scale_color_npg() + theme(legend.title = element_blank())
+p3 <- ggplotly(plot3)
+p3
+```
+
+Both graphs show a pretty steep increase in temperature over time. It's interesting that the Cariaco basin hasn't changed as much as the others. This could possibly be due to the fact that it is not as poleward as the other sites. 

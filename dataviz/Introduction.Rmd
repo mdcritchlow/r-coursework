@@ -1,0 +1,62 @@
+---
+title: "Introduction and Background"
+author: "Maggy Critchlow"
+date: "9/25/2020"
+output: 
+  html_document:
+    theme: yeti
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## The Question
+
+Hi! I have a data.frame called `foo` with two columns called `x` and `y`. Can you show me how to plot `x` vs`  y` in a scatter plot and also write the correlation coefficient (r) in text on the plot somewhere? Base graphics or ggplot is fine.
+
+```
+    # foo is a data.frame with correlated columns x and y
+    foo <- data.frame(x=c(-0.2319,-0.7997,-0.2335,-1.1935,-0.3854),
+                      y=c(-0.26575,-0.76199,-0.08832,-1.07194,-0.29174))
+    # This doesn't work :( 
+    plot(x,y)
+```
+
+Thanks for any help!
+
+## The Answer
+
+Hi, the main issue with your plot not working is that you haven't indicated the data frame for the plot command. You'd need to include the data frame in that line of code, so rather than ```plot(x,y)``` you'd write ```plot(foo$x, foo$y)```. You'd generate the following plot:
+
+```{r echo=T}
+    foo <- data.frame(x=c(-0.2319,-0.7997,-0.2335,-1.1935,-0.3854),
+                      y=c(-0.26575,-0.76199,-0.08832,-1.07194,-0.29174))
+    plot(foo$x,foo$y)
+```
+
+I personally really hate base R graphics, so I decided to add the correlation coefficient and spruce up the graph a bit using the awesome ggplot2 package.
+
+## The Answer but Better
+
+Pretty much everything about this graph is customizable, so if you're not a fan of the point style, color, or size, it's very easy to change. I also added a title and axis labels for you to modify.
+
+```{r echo=T}
+library(ggplot2)
+plot1 <- ggplot() + geom_point(data = foo, aes(x = x, y = y), color = "navy", size = 3, pch = 18) + theme_classic() + labs(x = "x", y = "y", title = "Your Graph Title Here")
+plot1
+```
+
+There's a few different ways to add the correlation coefficient, but probably the simplest is calculating the value ahead of time, then using the `annotate` and `paste` commands to add it to the existing plot. I rounded the correlation coefficient to two digits, but this can easily be changed if you prefer.
+
+```{r echo=T}
+cor.foo <- round(cor(foo$x, foo$y), 2)
+plot2 <- ggplot() + geom_point(data = foo, aes(x = x, y = y), color = "navy", size = 3, pch = 18) + theme_classic() + annotate(geom = "text", x = -0.25, y = 1.25, label = paste("R = ", cor.foo), size = 4) + labs(x = "x", y = "y", title = "Your Graph Title Here")
+plot2
+```
+
+Hope this helps!

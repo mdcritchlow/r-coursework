@@ -1,0 +1,74 @@
+---
+title: "Uncertainty"
+author: "Maggy Critchlow"
+date: "12/4/2020"
+output:
+  html_document:
+    fig_width: 8
+    fig_height: 6
+    theme: cosmo
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data and Required Packages
+
+```{r echo=T, message=FALSE, warning=FALSE}
+library(ungeviz)
+library(tidyverse)
+library(broom)
+library(emmeans)
+penguins <- read_csv("penguins.csv")
+```
+
+While puzzling over what to do this week, I stumbled upon this very helpful package called `ungeviz`, produced by none other than the author of our book, Claus Wilke! Perhaps Claus Wilke should be henceforth known as Santa Claus Wilke, because finding out that this package exists was a wonderful gift. 
+
+## Confidence Strips
+
+I thought the confidence strips from the reading looked really interesting, and so I decided that I wanted to make one for the assignment this week. While Wilke pointed out some of the problems with confidence strips, I think they are effective at visually conveying uncertainty, and the range of probabilities for the location of the mean. In the example shown on his `ungeviz` page, he overlayed error bars on top of the confidence strips, which seems like a great way to handle this. I'm going to revisit the variables I looked at during the distributions week (bill length by species and flipper length) to see if these visualizations change my opinion.
+
+### Bill Length by Species
+
+```{r echo=T}
+bill.means <- lm(bill_length_mm ~ species, data = penguins) %>% emmeans("species") %>% tidy() %>% mutate(species = fct_reorder(species, estimate))
+# Use the emmeans function to determine the mean and standard error of the data set and sort by descending order
+plot1 <- ggplot(data = bill.means, aes(x = estimate, moe = std.error, y = species)) +
+  stat_confidence_density(fill = "#82c3f5", height = 1, confidence = 0.95) +
+  geom_point(aes(x = estimate), size = 3) +
+  geom_errorbarh(aes(xmin = estimate - std.error, xmax = estimate + std.error), height = 1) + theme_bw() + xlim(37, 50) + labs(x = "Bill length (mm)", y = " ", caption = "Figure 1.1: Bill Length by Species of Penguin, showing estimate of means with 95% confidence")
+plot1
+```
+
+It looks like the Gentoo and Chinstrap penguins have more similar bill lengths than Adelie penguins. This is definitely similar to the patterns visible in the density plot. There isn't any overlap between Adelie penguin bill length and the other species' bill lengths, which suggests that the means of bill length are different between Adelie penguins and the other species shown here. 
+
+### Flipper Length by Sex
+
+In the original penguins assignment, I looked at a histogram of flipper lengths and noticed a binomial distribution. I wondered if it had to do with differences by sex, and my peer reviewer suggested that I should have looked at this with a plot. Better late than never, so here's that plot. This is probably not an especially efficient nor graceful way to manipulate this data and produce the plot below, but I should probably just be happy that the plot looks how I wanted it to look. 
+
+```{r echo=T}
+# Separate data by sex, because the stat confidence density argument didn't seem to appreciate any other grouping methods
+flip.m <- penguins %>% filter(sex == "male")
+flip.f <- penguins %>% filter(sex == "female")
+# Estimate means again and sort by descending order
+flip.m.means <- lm(flipper_length_mm ~ species, data = flip.m) %>% emmeans("species") %>% tidy() %>% mutate(species = fct_reorder(species, estimate))
+flip.f.means <- lm(flipper_length_mm ~ species, data = penguins) %>% emmeans("species") %>% tidy() %>% mutate(species = fct_reorder(species, estimate))
+# Plot each data frame in its own layer
+plot2 <- ggplot() +
+  stat_confidence_density(data = flip.m.means, aes(x = estimate, moe = std.error, y = species), fill = "#82c3f5", height = 1, confidence = 0.95) + stat_confidence_density(data = flip.f.means, aes(x = estimate, moe = std.error, y = species), fill = "#699178", height = 1, confidence = 0.95) + 
+  geom_point(data = flip.m.means, aes(x = estimate, y = species), size = 3) +
+  geom_point(data = flip.f.means, aes(x = estimate, y = species), size = 3) +
+  geom_errorbarh(data = flip.m.means, aes(xmin = estimate - std.error, xmax = estimate + std.error, y = species), height = 1) + geom_errorbarh(data = flip.f.means, aes(xmin = estimate - std.error, xmax = estimate + std.error, y = species), height = 1) + theme_bw() + labs(x = "Flipper length (mm)", y = " ", caption = "Figure 1.2: Flipper Length by Species and Sex of Penguin, showing estimate of means \n with 95% confidence.  Green represents females, and blue represents males.")
+plot2
+```
+
+Maybe not surprising, but this does seem to support my idea that there might be a dimorphic difference in flipper length from the original assignment. This time, it's the Gentoo penguins who are very different from the other species, although we can say with 95% confidence that flipper lengths differ by species, and by sex within each species. 
+
+## Discussion
+
+The results visualized here are well-aligned with the results seen in the "Distributions" assignment. I am still wrapping my head around all of the different ways to visualize uncertainty. Prior to this module, my knowedge of uncertainty was slapping some error bars on a plot, but this has gotten me to think about it a lot more. Hopefully I will continue to improve as we work with these concepts more.
