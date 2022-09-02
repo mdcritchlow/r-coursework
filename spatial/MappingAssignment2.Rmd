@@ -1,0 +1,144 @@
+---
+title: "Mapping Assignment"
+author: "Maggy Critchlow"
+date: "4/18/2020"
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Required Packages
+
+```{r echo=T, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+library(raster)
+library(rgdal)
+library(sf)
+library(ggrepel)
+```
+
+## Mount Baker Elevation
+
+### Overview of Data Set
+
+Using "GDALinfo", we can see that this raster file is in UTM, rather than lat/long measurements, is in meter units, and has a 5x5 m resolution. This is necessary information in order to pick the best projection, and also to ensure all of our data is in consistent units.
+
+```{r echo=T, message=FALSE, warning=FALSE}
+GDALinfo("data/mtbDEM.tif")
+mtbDEM <- raster("data/mtbDEM.tif")
+summary(mtbDEM)
+```
+
+This gives us some useful information about our data. In order to use ggplot to make the map, this raster needs to be put into a data frame. The structure command provides a way to double check that this worked properly.
+
+```{r echo=T}
+mtbDEM_df <- as.data.frame(mtbDEM, xy = TRUE)
+str(mtbDEM_df)
+```
+
+### Basic Map of Mt Baker Elevation
+
+With the data now in the data frame format, it's easy to make a simple map using ggplot2.
+
+```{r echo=T, message=FALSE, warning=FALSE}
+ggplot() +
+  geom_raster(data = mtbDEM_df , aes(x = x, y = y, fill = mtbDEM)) +
+  coord_quickmap(xlim = NULL, ylim = NULL, expand = TRUE,
+                 clip = "on") + coord_fixed()
+```
+
+This graph does display the elevation at each coordinate, but that's about all it does well. Luckily, there's a few things that can be changed to make it more useful. First, instead of the continuous elevation which is messy and hard to interpret, I'll create categories. The difference between the maximum and minimum elevations is approximately 863 m. If we want each shade on the map to represent a 100m range of elevations, we can use 9 bins (the closest whole number to 8.63 bins). This grouping can be achieved using dplyr's "mutate" command.
+
+```{r echo=T, message=FALSE, warning=FALSE}
+mtbDEM_df <- mtbDEM_df %>% mutate(fct_elevation = cut(mtbDEM, breaks = 9))
+```
+
+## New and Improved Mt Baker Map
+
+This is the map with the terrain colors and the elevation showing as a discrete variable rather than continuous. The legend shows the elevation ranges corresponding to each color. In improving this map, I also cleandc up the empty space between the map edge and the axes, removed the distracting grid lines on the background, and relabeled the axes and the main and legend titles. 
+
+```{r echo=T, message=FALSE, warning=FALSE}
+terrain.colors(9)
+ggplot() +
+  geom_raster(data = mtbDEM_df , aes(x = x, y = y, fill = fct_elevation)) + 
+  scale_fill_manual(values = terrain.colors(9), name = "Elevation") + scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  coord_quickmap(xlim = NULL, ylim = NULL, expand = TRUE, clip = "on") + coord_fixed() + theme_bw() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + labs(x = "Easting (m)", y = "Northing (m)", title = "Mount Baker Ski Area")
+```
+
+## Vector Data
+
+### Gathering Information
+
+After reading in the data file, it's important to check that the CRS matches the raster's, otherwise they will not layer on the same scale properly. The projection is also in UTM, and uses the same units as the above map. The bbox information, which shows the boundaries of this data, is within the dimensions of the map used above, so I won't have to change anything before adding the chairlifts as a layer. 
+
+```{r echo=T, message=FALSE, warning=FALSE}
+chairs <- st_read("data/mtbChairLines.shp")
+st_crs(chairs)
+st_bbox(chairs)
+```
+
+### Map with Chairlift Lines
+
+```{r echo=T, message=FALSE, warning=FALSE}
+ggplot() +
+  geom_raster(data = mtbDEM_df , aes(x = x, y = y, fill = fct_elevation)) + 
+  scale_fill_manual(values = terrain.colors(9), name = "Elevation") + scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  coord_quickmap(xlim = NULL, ylim = NULL, expand = TRUE, clip = "off") + coord_fixed() + theme_bw() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + labs(x = "Easting (m)", y = "Northing (m)", title = "Mount Baker Ski Area") + geom_sf(data = chairs) + coord_sf(datum = NULL)
+```
+
+This works, but it's not that helpful without the chairlift labels. Unfortunately, the chairlift labels in their normal states overlap because they are placed at the ends of these vectors. One way around this is to find the center of the chairlift vectors, and attach the labels to the center rather than at the ends. This is accomplished using the st_centroid command, in the sf package, which is then put into its own dataframe. This label data set can then be added as a layer onto the map.
+
+```{r echo=T, message=FALSE, warning=FALSE}
+st_centroid(chairs)
+chairslabels <- st_centroid(chairs)
+```
+
+### Map with Labeled Chairlifts
+
+```{r echo=T, message=FALSE, warning=FALSE}
+ggplot() +
+  geom_raster(data = mtbDEM_df , aes(x = x, y = y, fill = fct_elevation)) + 
+  scale_fill_manual(values = terrain.colors(9), name = "Elevation") + scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  coord_quickmap(xlim = NULL, ylim = NULL, expand = TRUE, clip = "off") + coord_fixed() + theme_bw() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + labs(x = "Easting (m)", y = "Northing (m)", title = "Mount Baker Ski Area") + geom_sf(data = chairs) + coord_sf(datum = NULL) + geom_sf_label(mapping = aes( label = id), data = chairslabels, size=2) + coord_sf(datum = NULL)
+```
+
+## Adding Point Data (Lodges) to Map
+
+```{r echo=T, message=FALSE, warning=FALSE}
+lodges <- read.csv("data/mtbLodges.csv")
+str(lodges)
+head(lodges)
+```
+
+This last part is probably the easiest. Since, per the assignment instructions, this data is in UTM (the same as everything else), the points can be taken directly from the .csv file and placed as an additional layer onto the map. 
+
+```{r echo=T, message=FALSE, warning=FALSE}
+ggplot() +
+  geom_raster(data = mtbDEM_df , aes(x = x, y = y, fill = fct_elevation)) + 
+  scale_fill_manual(values = terrain.colors(9), name = "Elevation") + scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  coord_quickmap(xlim = NULL, ylim = NULL, expand = TRUE, clip = "off") + coord_fixed() + theme_bw() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + labs(x = "Easting (m)", y = "Northing (m)", title = "Mount Baker Ski Area") + geom_sf(data = chairs) + coord_sf(datum = NULL) + geom_sf_label(mapping = aes( label = id), data = chairslabels, size=2) + coord_sf(datum = NULL) + geom_point(data = lodges, aes(x = X, y = Y), size = 3, pch= 23, fill = "blue")
+```
+
+## Final Product
+
+The last step is adding the labels to the lodges. This is best achieved using the "geom_label_repel" option, found in the ggrepel package, which automatically prevents labels from overlapping one another. 
+
+```{r echo=T, message=FALSE, warning=FALSE}
+ggplot() +
+  geom_raster(data = mtbDEM_df , aes(x = x, y = y, fill = fct_elevation)) + 
+  scale_fill_manual(values = terrain.colors(9), name = "Elevation") + scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  coord_quickmap(xlim = NULL, ylim = NULL, expand = TRUE, clip = "off") + coord_fixed() + theme_bw() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + labs(x = "Easting (m)", y = "Northing (m)", title = "Mount Baker Ski Area") + geom_sf(data = chairs) + coord_sf(datum = NULL) + geom_sf_label(mapping = aes( label = id), data = chairslabels, size=2) + coord_sf(datum = NULL) + geom_point(data = lodges, aes(x = X, y = Y), size = 3, pch= 23, fill = "blue") + geom_label_repel(data = lodges, aes(x = X, y = Y, label = id), size = 2)
+```

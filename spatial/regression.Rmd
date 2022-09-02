@@ -1,0 +1,112 @@
+---
+title: "Spatial Regression"
+author: "Maggy Critchlow"
+date: "5/31/2020"
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data Overview
+
+This data set is made up of 64 plots where information on bird and plant diversity was collected. In addition to those statistics, the location of each plot was recorded. The goal of this assessment is to find out if bird diversity is a function of plant diversity, and if plant diversity can be used to predict patterns in bird diversity. This can be analyzed using linear regression, which will produce an equation to explain the relationship between bird and plant diversity.
+
+```{r echo=T}
+div <- read.csv("birdDiv.csv")
+head(div)
+```
+
+### Packages Reqiured
+
+```{r echo=T, message=FALSE, warning=FALSE}
+library(automap)
+library(gstat)
+library(sp)
+library(nlme)
+library(spdep)
+library(ncf)
+library(ggplot2)
+```
+
+### Plot of Bird and Plant Diversity
+
+```{r echo=T}
+plot1 <- ggplot() + geom_point(data = div, aes(x = UTME, y = UTMN, fill = birdDiv, size = plantDiv), shape = 21) + scale_fill_viridis_c() + labs(x = "Easting", y = "Northing", title = "Bird and Plant Diversity Measured by Location", fill = "Bird Diversity", size = "Plant Diversity") + theme_classic()
+plot1
+```
+
+The data was collected in a northeast-southwest direction, which could become important in helping to explain any results. Bird and plant diversity are represented in the color and size of the points, respectively. It generally looks like sites with a higher plant diversity also have higher bird diversity, but regression will allow us to test this observation. 
+
+## OLS on Bird and Plant Diversity
+
+```{r echo=T}
+gls1 <- gls(birdDiv~plantDiv, div)
+summary(gls1)
+corr <- cor(div$plantDiv, div$birdDiv)
+corr
+(corr)^2
+```
+
+Analysis with ordinary least squares, which fits a regression line to minimize distance from each point to the line, finds a positive relationship between bird and plant diversity. The equation of this line indicates that a one-unit increase in plant diversity sees a 1.14 unit increase in bird diversity. The equation of this line is significantly different from zero (p < 0.05). Using correlation, we find a correlation coefficient of 0.57 and an R^2^ value of 0.32. These results show that there is a moderately strong positive relationship between plant diversity and bird diversity, and that plant diversity explains approximately 32% of the variance in bird diversity. Not terrible, but not great. Because OLS is built on the assumption of independent and identically or normally distributed, it's necessary to check the residuals in order to ensure that these assumptions are met, and that using OLS is a valid way to analyze this data. Below, the linear relationship between the variables is shown with the regression line. 
+
+```{r echo=T}
+plot2 <- ggplot(data = div, aes(x = plantDiv, y = birdDiv)) + geom_point(size = 2) + geom_smooth(method = "lm", formula = y ~ x, se = T) + labs(x = "Plant Diversity", y = "Bird Diversity", title = "Plant Diversity vs Bird Diversity") + theme_classic()
+plot2
+```
+
+### Autocorrelation Test of Residuals
+
+```{r echo=T}
+div$gls1resid <- residuals(gls1, type = "normalized")
+resid.I <- spline.correlog(x = div$UTME, y = div$UTMN, z = div$gls1resid, resamp = 100, quiet = TRUE)
+plot(resid.I)
+```
+
+A correlogram is useful to identify any autocorrelation found within the residuals. This correlogram certainly shows autocorrelation of distances less than 50,000 m, indicating that the residuals are almost certainly not independent or identically distributed. Using a generalized least squares (GLS) model will account for this pattern in the residuals, and allow us to develop a linear model to represent the data and identify any relationship between the bird and plant diversity variables.
+
+## GLS on Bird and Plant Diversity
+
+### Autocorrelation Correction
+
+```{r echo=T}
+div.sp <- div
+coordinates(div.sp) <- c("UTME", "UTMN")
+class(div.sp)
+plot(autofitVariogram(gls1resid~1, input_data = div.sp))
+```
+
+A variogram can be used to produce a model that accounts for this pattern seen in the residuals. This variogram shows all kinds of strange and interesting things, and autocorrelation over short distances is certainly one of them. This Gaussian model can be used to model the structure of the residuals for the GLS function.
+
+### GLS Model
+
+```{r echo=T}
+cs1 <- corGaus(form = ~UTME + UTMN, nugget = TRUE)
+gls2 <- update(gls1, correlation = cs1)
+summary(gls2)
+```
+
+When removing the effect of spatial patterns from the data, the results are very different from the OLS model. The AIC decreases, indicating a much more parsimonious model than the former one, and the standardized residuals appear to be much closer to normal distribution. The residual standard error increases, however, and the slope of the best fit line is not significantly different from zero (p > 0.05). There is no statistical evidence to support that plant diversity has predictive value in determining bird diversity. It seems likely that the pattern seen in the OLS regression was driven by the spatial pattern in the data, rather than the plant diversity. It's worth ensuring that the spatial pattern has been accounted for with this correction, which can be determined using the residuals from the GLS model.
+
+```{r echo=T}
+div$gls2resids <- residuals(gls2, type = "normalized")
+resids.I.2 <- spline.correlog(x = div$UTME, y = div$UTMN, z = div$gls2resids, resamp = 50, quiet = TRUE)
+plot(resids.I.2)
+```
+
+The remaining residuals do not show any significant evidence of autocorrelation, so this GLS analysis can be considered a valid representation of this dataset. Below is the original dataset, with the GLS regression mapped over the points. While the analysis determined that this was not a statistically significant relationship between bird and plant diversity, it provides some context to the line equation generated above.
+
+```{r echo=T}
+plot3 <- ggplot() + geom_point(data = div, aes(x = plantDiv, y = birdDiv), size = 3) + geom_abline(intercept = 4.9489878, slope = -0.1519641, color = "red", size = 1) + labs(x = "Plant Diversity", y = "Bird Diversity", title = "Plant Diversity vs Bird Diversity") + theme_classic() 
+plot3
+```
+
+## Discussion
+
+The equations generated by these two models offer very different results. This difference highlights the importance of ensuring that residuals are independent from one another and normally distributed, as it seems likely that the OLS model was simply picking up on the spatial relationship between points (the First Law of Geography) rather than the relationship between bird and plant diversity. Without more specific information on the sites (for instance, a species count), it's difficult to identify why there would not be a relationship between bird and plant diversity. Perhaps most of the birds surveyed were opportunistic insect eaters. Or maybe the birds showed a higher amount of interspecies competition, compared to the plants at these sites, and so they had a lower amount of species diversity overall. It's difficult to say. 

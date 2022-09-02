@@ -1,0 +1,135 @@
+---
+title: "Geostats I"
+author: "Maggy Critchlow"
+date: "5/23/2020"
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data Overview
+
+This data set represents monthly precipitation in millimeters, along with a annual average, from 432 data collection stations across California. While this is a large amount of data, we do not currently have precipitation values for every single area of the state. Fortunately, it's possible to interpolate the missing values, and one method is inverse distance weighing (IDW), demonstrated below.
+
+```{r echo=T}
+bndCA <- readRDS("bndCA.rds")
+gridCA <- readRDS("gridCA.rds")
+precipCA <- readRDS("prcpCA.rds")
+summary(precipCA$ANNUAL)
+```
+
+### Packages Required
+
+```{r echo=T, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(gstat)
+library(sp)
+library(sf)
+```
+
+### Map of Precipitation Data
+
+```{r echo=T}
+plot1 <- ggplot() + geom_sf(data = bndCA, fill = "grey80") + geom_sf(data = precipCA, aes(fill = ANNUAL, size = ANNUAL), color = "white", shape=21, alpha=0.8) + scale_fill_continuous(type = "viridis", name = "mm") + guides(fill = guide_colorbar(), size="none") + labs(title="Total Annual Precipitation") + theme_bw() 
+plot1
+```
+
+The overall pattern is a higher volume of precipitation in the northwest corner of the state. The northern half of the state shows more precipitation than the southern half, and the southeastern area of the state has the lowest amounts. In terms of data availability, there are more precipitation values available for the western portion of the state, which makes sense when considering the population density of the state. There seem to be some significant gaps in coverage in eastern California, especially between Death Valley and the Mojave National Preserve. These areas will likely be the weakest part of the model, since IDW performs best with a denser data set.
+
+## Predictions via Inverse Distance Weighting
+
+### Testing and Training Separation
+
+In checking a model's gooness of fit, it is important to include testing data for the model. Withholding 10% of the data is somewhat arbitrary, but seems to strike a good balance between providing enough data to build a good model, yet hold back enough data to ensure a robust test. Cross-validation will be useful in determining the best amount of data to withhold.
+
+```{r echo=T}
+precipCA.sp <- as_Spatial(precipCA)
+n <- nrow(precipCA)
+testrows <- sample(x = 1:n, size = n*0.1)
+cal.test <- precipCA.sp[testrows,]
+cal.train <- precipCA.sp[-testrows,]
+```
+
+### IDW with Power of 2
+
+```{r echo=T}
+cal.IDW <- idw(formula = ANNUAL~1, locations = cal.train, newdata = gridCA, idp = 2)
+spplot(cal.IDW)
+```
+
+This map has some spots that don't appear to blend in well with the rest of the data, such as the "craters" towards the southern-center part of the state. When used along with the model's RMSE and R^2^, this could suggest that this model is not the best fit for this data.
+
+#### Residual Means Squared Error and R^2^
+
+```{r echo=T}
+obs <- cal.test@data$ANNUAL
+tmp <- over(cal.test, cal.IDW)
+preds <- tmp$var1.pred
+rsq <- round(cor(obs,preds,use = "complete.obs")^2,digits = 3)
+rmse <- round(sqrt(mean((preds - obs)^2, na.rm=TRUE)))
+rsq
+rmse
+```
+
+Using a squared weighting value provides a model with an R^2^ value of `r rsq`, and a RMSE of `r rmse`, when compared against the test data. This R^2^ value is generally interpreted as a well-fitting model, but perhaps there's an even better fit out there with a different exponent. 
+
+#### Linear Regression
+
+```{r echo=T, message=FALSE, warning=FALSE}
+plot2 <- ggplot()  + geom_abline(slope=1,intercept = 0) + geom_point(aes(x=obs,y=preds)) + geom_smooth(aes(x=obs,y=preds),method ="lm") + labs(x="Observed Values (mm)",y="Predicted Values (mm)",title="Annual Rainfall in California, Predicted vs Observed Values")
+plot2
+```
+
+The linear regression shows a model that tends to under-predict lower precipitation amounts, and over-predict the highest amounts. The points themselves are also interesting, since there is quite a bit of scatter in the mid-range values, and two points that are far higher than the others. While the five number summary suggests that this data is skewed right, these two points don't seem to be outliers or not representative of the data. Overall, this model appears to be a decent fit, but trying some other weighting strategies might help to bring the observed and predicted values closer together.
+
+### IDW with Power of 4 and 5 Maximum Points
+
+Using an iterative approach, I tested out various power integers to find the weighting that offered the highest R^2^ and lowest RMSE. Ultimately, a power of four with five maximum points for interpolation performed the best by these metrics out of all attempts. 
+
+```{r echo=T}
+cal.IDW4 <- idw(formula = ANNUAL~1, locations = cal.train, newdata = gridCA, idp = 4, nmax = 5)
+spplot(cal.IDW4)
+```
+
+This map looks better than the one above, and is notably missing the mismatched spots. It seems to be a pretty good fit.
+
+#### RMSE and R^2^
+
+```{r echo=T}
+tmp4 <- over(cal.test, cal.IDW4)
+preds4 <- tmp4$var1.pred
+rsq4 <- round(cor(obs, preds4, use = "complete.obs")^2, digits = 3)
+rmse4 <- round(sqrt(mean((preds4 - obs)^2, na.rm=TRUE)))
+rsq4
+rmse4
+```
+
+The R^2^ value of `r rsq4` indicates a model that fits the data well and is quite accurate when predicting the data based on the comparison with the observed test data. A power of 4 also has a lower RMSE, which shows less unexplained variance in the data between the predicted and observed test values. Without trying fractions as powers, it's difficult to say if this is the "best" model for this data. Due to the sparse coverage in parts of the state, and the scatter of points towards the middle of the regression, this may be the best-fitting model that's possible to achieve using this method.
+
+#### Linear Regression
+
+```{r echo=T, message=FALSE, warning=FALSE}
+plot4 <- ggplot()  + geom_abline(slope = 1, intercept = 0) + geom_point(aes(x = obs, y = preds4)) + geom_smooth(aes(x = obs, y = preds4), method = "lm") + labs(x = "Observed Values (mm)", y = "Predicted Values (mm)", title = "Annual Rainfall in California, Predicted vs Observed Values")
+plot4
+```
+
+There's a clear difference between this regression and the one above in terms of model fit. However, both models under-predicted the lower values and over-predicted the higher ones, and there is still quite a bit of scatter around the middle values (from approximately 500-1000 mm). 
+
+## Predicted Precipitation across California
+
+```{r echo=T}
+cal.IDW4.df <- as(cal.IDW4, "data.frame")
+plot5 <- ggplot() + geom_raster(data = cal.IDW4.df, aes(x = x, y = y, fill = var1.pred), alpha = 0.8) + scale_fill_continuous(type = "viridis", name = "Precipitation (mm)") + labs(x = "Easting (m)", y = "Northing (m)", title = "Cadmium concentrations") + coord_fixed() + theme_bw()
+plot5
+```
+
+## Discussion
+
+Although model fit could be improved by adjusting the parameters shown above, the large areas without data and the same patterns in prediction versus observed values across all models suggest that there is an upper limit to how well an IDW model can fit this data. It's somewhat difficult to try all possible combinations of power, maximum or minimum number of points, and maximum distance for interpolation, and so it's also possible to miss that ideal combination through trial and error. However, a model with an R^2^ value of > 0.8 is still considered a useful model in terms of its predictive abilities, so perhaps "good enough" is, well, good enough in this case. In addition, the scatter of points being present in the regressions made me wonder if there might be another variable which explains a share of this variance, such as altitude. This could be something to explore further in subsequent predictions if it's possible to incorporate additional variables with the spatial data.

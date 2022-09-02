@@ -1,0 +1,120 @@
+---
+title: "Autocorrelation Assignment"
+author: "Maggy Critchlow"
+date: "5/3/2020"
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Required Packages
+
+```{r echo=T, message=FALSE, warning=FALSE}
+library(sf)
+library(gstat)
+library(ncf)
+library(spdep)
+library(raster)
+library(ggplot2)
+library(ggmap)
+```
+
+## Data Overview
+
+```{r echo=T, message=FALSE, warning=FALSE}
+birds <- readRDS("birdRichnessMexico.rds")
+mexMap <- get_stamenmap(bbox = c(left = -117.463341, bottom = 13.590176, right = -83.625451, top = 33.475192), zoom = 6, maptype = "watercolor")
+map1 <- ggmap(mexMap)
+plot1 <- map1 + geom_point(data=data.frame(birds), aes(x=long, y=lat, fill=nSpecies), size=6, shape=21, color="white",alpha=0.8) + scale_fill_continuous(type="viridis") + labs(x = "Longitude", y = "Latitude", fill = "Number of Species")
+plot1
+```
+
+This is a data set showing species counts for several different sites throughout Mexico. From looking at this map, sites near each other do look to be more similar than sites further apart. Areas on the Baja California peninsula look to have the lowest numbers of species, while sites in the southern states, like Veracruz, Oaxaca, and Chiapas have higher numbers of species. I am kind of curious about the couple of areas on the map without any data, such as the mountains north of Guadalajara, or the area in what looks like northern Durango. I mean I'm guessing that researchers couldn't access those areas to sample there for whatever reason, but it's still kind of an interesting gap. 
+
+Using autocorrelation techniques will allow us to identify spatial patterns in the number of species, and either support or refute the patterns seen from looking at the map.
+
+## Lagged Correlations
+
+```{r echo=T}
+hist(birds$nSpecies)
+```
+
+This histogram of the number of species counted at each of the sites shows data that is (roughly) normally distributed, or at least not egregiously non-normal. While normality isn't a necessary assumption for the lagged correlations or any of the later analyses, having a data set that isn't highly skewed is easier to work with. This looks fine.
+
+```{r echo=T}
+hscat(nSpecies~1, data=birds, breaks = seq(0,2e6, by = 2e5), pch = 20, cex = 0.6)
+```
+
+This shows a data set that is quite strongly correlated at close distances (r = 0.667 for distances between 0 and 200,000 meters apart). This correlation decreases as distance between sites increases, indicating that the bird species counts are more different at sites that are further apart, while sites that are closer together tend to have more similar species counts. 
+
+## Variogram
+
+```{r echo=T}
+species.var <- variogram(nSpecies~1, birds, cloud = FALSE)
+plot(species.var, pch = 18, cex = 1.5, col = "blue", ylab=expression("Semivariance ("*gamma*")"), xlab="Distance (m)", main = "Bird Species")
+```
+
+This shows a similar pattern overall to the lagged correlogram, where points that are geographically closer together are more similar, and therefore have a lower semivariance value, than points that are geographically further apart. It's interesting that the most dramatic differences happen at the closest and farthest distances, with a more middling distance corresponding to a more moderate change in semivariance.
+
+### Varigram over Short Distance
+
+```{r echo=T}
+species.var2 <- variogram(nSpecies~1, birds, cloud = FALSE, cutoff = 200000, width=30000)
+plot(species.var2, pch = 18, cex = 1.5, ylab=expression("Semivariance ("*gamma*")"), xlab="Distance (m)", main = "Bird Species")
+```
+
+I was curious about the steep increase in semivariance within the first 200,000 m, so I decided to take a closer look at the variogram within that distance. Overall, this pattern is consistent with the autocorrelation seen in the other plots, but the spike in semivariance at approximately 100,000 m (or 100km) is really interesting. It looks like the width of Mexico at its narrowest point is approximately 200km, according to Google maps, so I'm wondering if this is one of the contributing factors to the semivariance increase. Referencing the species map above, it looks like the values at that narrowest point are some of the higher species counts on the map, and going from approximately 400 species to none for distances in the water would cause a high semivariance value. Since this is an average, I suspect that this could be strongly affecting the semivariance value for that distance.
+
+## Moran's I and Correlogram
+
+### Moran's I Calculation
+
+```{r echo=T}
+w <- as.matrix(1/dist(coordinates(birds)))
+wList <- mat2listw(w)
+moran.test(log(birds$nSpecies),wList)
+```
+
+Using an inverse weighting system, we can see that there is positive autocorrelation happening in this dataset, and this is statistically significant. This information can be visualized on a correlogram, which can provide more information about Moran's I at specific distances. 
+
+### Correlogram
+
+```{r echo=T}
+birdsX <- coordinates(birds)[,1]
+birdsY <- coordinates(birds)[,2]
+speciesI <- correlog(x=birdsX, y=birdsY, z=log(birds$nSpecies), increment=100000, resamp=200, quiet=TRUE)
+plot(speciesI,xlim=c(0,2000000), ylim=c(-1.5,1.5))
+```
+
+This correlogram looks similar to a gradient pattern. Shorter distances see high correlation, which decreases at a fairly consistent rate as distance increases, reaches CSR at approximately 1000 km, then becomes slightly negatively autocorrelated at larger distances. Overall, this matches the patterns seen on the map of species counts. 
+
+### Correlogram at shorter distances (under 200km)
+
+```{r echo=T}
+birdsX <- coordinates(birds)[,1]
+birdsY <- coordinates(birds)[,2]
+speciesI.close <- correlog(x=birdsX, y=birdsY, z=log(birds$nSpecies), increment=10000, resamp=200, quiet=TRUE)
+plot(speciesI.close,xlim=c(0,200000), ylim=c(-1.5,1.5))
+```
+
+Interestingly, this is a different pattern than the one seen on the variogram above. There is significant and strong autocorrelation at short distances (under approximately 10km), which drops to CSR at roughly 25km, and then returns to strong, but gradually decreasing autocorrelation as distance increases. 
+
+### Directional Correlogram
+
+```{r echo=T}
+birdVar <- variogram(nSpecies~1, data = birds, alpha=c(0,45,90,135))
+plot(birdVar, pch = 20, colour = "black", cex = 1)
+```
+
+The directional variograms show an important pattern as well. There seems to be less semivariance when comparing east to west (90 degrees) than north to south (0 degrees). This makes sense when considering that east to west comparisons are at the same latitude, with a more similar climate, than north to south comparisons, which would see a wider range of climates as distance from the equator changes. These climate differences typically affect species diversity, and this trend of species counts increasing moving from north to south can be seen on the map as well.
+
+## Discussion
+
+All three of these measurement techniques illustrate slightly different aspects of the data, and highlight different patterns. The variograms are useful in qualitatively exploring differences between the sites, while the correlograms provide some useful numbers for interpretation and comparison. The biggest thing that seems to be missing, right now, is the ability to predict variance or correlation based on a specified distance, using a generated equation for either the variogram or the correlogram. We are also missing a way to determine if the semivariance is significant, which seems like it could be useful. It also seems like this could be interesting combined with different variables, to see if it's possible to determine some of the unexpected patterns seen above. 

@@ -1,0 +1,108 @@
+---
+title: "Geostats II"
+author: "Maggy Critchlow"
+date: "5/27/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data Overview
+
+This is the same data set from the last module, which contains precipitation data for 432 locations in California. Another way to predict precipitation over the entire state is to use kriging, which interpolates precipitation using the existing data points. Unlike IDW, however, this method shows variance, interpreted as error, which is useful in determining the effectiveness of the model. As discussed last time, this data is pretty skewed. Because normality is not essential in evaluating the data using kriging, I will not transform it to make it easier to interpret the output values (interpreting the log of a mm isn't easy). 
+
+```{r echo=T}
+bndCA <- readRDS("bndCA.rds")
+gridCA <- readRDS("gridCA.rds")
+precipCA <- readRDS("prcpCA.rds")
+summary(precipCA$ANNUAL)
+```
+
+### Packages Required
+
+```{r echo=T, message=FALSE, warning=FALSE}
+library(sp)
+library(sf)
+library(ggplot2)
+library(gstat)
+```
+
+### Map of California Precipitation Data
+
+```{r echo=T}
+plot1 <- ggplot() + geom_sf(data = bndCA, fill = "grey80") + geom_sf(data = precipCA, aes(fill = ANNUAL, size = ANNUAL), color = "white", shape=21, alpha=0.8) + scale_fill_continuous(type = "viridis", name = "mm") + guides(fill = guide_colorbar(), size="none") + labs(title="Total Annual Precipitation") + theme_bw() 
+plot1
+```
+
+As mentioned in the last module, the highest amounts of precipitation is in the northwest, which decreases moving towards the southeast. It will be interesting to see if the kriging model performs any better with the limited data in the eastern half of the state.
+
+## Precipitation Prediction Using Kriging
+
+### Variogram of Precipitation
+
+```{r echo=T, message=FALSE, warning=FALSE}
+precipCA.sp <- as_Spatial(precipCA)
+precip.var <- variogram(ANNUAL~1, precipCA.sp)
+plot(precip.var, pch=20, cex = 1.5, col = "black", ylab = expression("Semivariance ("*gamma*")"), xlab = "Distance (m)", main = "Annual precipitation (mm)")
+```
+
+The variogram shows that the precipitation data is strongly autocorrelated up to distances of approximately 150 km, levels off until approximately 200 km, then shows some autocorrelation up to around 325km. It looks like the sill is at 150,000 units of semivariance, the range at approximately 280 km, which is the last point on the graph showing some autocorrelation, and because this is a continuous variable with no visible nugget effect, I will set the nugget to zero and adjust it if necessary.
+
+### Model Fits {.tabset}
+
+Between the two of these, the experimental model definitely seems to follow the pattern of the empirical data much more closely. This makes it a better choice for the prediction via kriging method.
+
+#### Spherical Model
+
+```{r echo=T}
+sph.model <- vgm(psill = 150000, model = "Sph", range = 280000, nugget = 0)
+sph.fit <- fit.variogram(object = precip.var, model = sph.model)
+plot(precip.var, model = sph.fit, pch=20, cex=1.5, col="black", ylab=expression("Semivariance ("*gamma*")"), xlab="Distance (m)", main = "Precipitation (mm)", sub="Points: Empirical, Line: Spherical Model")
+```
+
+#### Experimental Model
+
+```{r echo=T}
+exp.model <- vgm(psill = 150000, model = "Exp", range = 280000, nugget = 0)
+exp.fit <- fit.variogram(object = precip.var, model = exp.model)
+plot(precip.var, model = exp.fit,pch=20,cex=1.5,col="black", ylab=expression("Semivariance ("*gamma*")"), xlab="Distance (m)", main = "Precipitation (mm)", sub="Points: Empirical, Line: Experimental Model")
+precip.krige <- krige(ANNUAL~1, precipCA.sp, gridCA, model = exp.fit)
+```
+
+### Map of Precipitation Predictions and Variance
+
+#### Precipitation Predictions by Kriging
+
+```{r echo=T}
+precip.krige.df <- as.data.frame(precip.krige)
+head(precip.krige.df)
+plot2 <- ggplot() + geom_raster(data = precip.krige.df, aes(x = x, y = y, fill = var1.pred)) + scale_fill_continuous(type = "viridis", name = "Precipitation (mm)") + labs(x = "Easting (m)", y = "Northing (m)", title = "Precipitation Predictions") + coord_fixed() + theme_bw()
+plot2
+```
+
+This looks like a pretty good prediction, based on the values from the precipitation data. Overall, it looks like the patterns stay mostly the same, and looks how we would expect it to. However, it's important to check the variance, which represents the error in this method, before deciding if this is a good model or not.
+
+#### Precipitation Variance by Kriging
+
+```{r echo=T}
+plot3 <- ggplot() + geom_raster(data = precip.krige.df, aes(x = x, y = y, fill = sqrt(var1.var))) + scale_fill_continuous(type = "viridis", name = "Precipitation (mm)") + labs(x= "Easting (m)", y = "Northing (m)", title = "Precipitation Variance") + coord_fixed() + theme_bw()
+plot3
+```
+
+The variance of this model indicates that it's a good fit as well. The highest amounts of variance are in the southeast, where the data are most spread out. Like IDW and probably most interpolation techniques, it seems to be most reliable with a large number of data points to draw from. It also looks like some of the spots with slightly higher variance may occur in areas with many points that have a wider range of values, such as in the northwest corner. If there is another underlying variable driving this pattern, the model could be picking up some of that unexplained variance. Cross-validation will test this model to ensure that it is generalizeable, and provide an R^2^ statistic for interpretation.
+
+## Cross Validation of Model
+
+```{r echo=T}
+precip.krige.cross <- krige.cv(formula = ANNUAL~1, locations = precipCA.sp, model = exp.fit, verbose = FALSE)
+head(precip.krige.cross)
+cor(precip.krige.cross@data$observed,precip.krige.cross@data$var1.pred)^2
+```
+
+The cross-validation, which is leave-one-out validation method, indicates that the R^2^ from the observed versus predicted values is 0.902. This model accurately predicts the precipitation values with a high degree of accuracy, and supports that this would be a useful model for interpreting these missing data points.
+
+## Discussion
+
+Kriging provides a more directed approach than IDW. Rather than guessing and checking weights for the dataset, using the variogram to fit a model provides more justification for the numbers chosen, and a better chance of finding the best fitting model. The variance provides some insight to the strongest and weakest areas of the model. However, kriging still seems to struggle in predictions for areas without a lot of data. 

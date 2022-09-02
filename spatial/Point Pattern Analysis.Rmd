@@ -1,0 +1,101 @@
+---
+title: "Point Pattern Analysis"
+author: "Maggy Critchlow"
+date: "4/29/2020"
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Overview and Required Packages
+
+```{r echo=T, message=FALSE, warning=FALSE}
+library(spatstat)
+library(tidyverse)
+```
+
+## Ripley's K on Point Pattern D
+
+### Pattern D Overview and Illustration {.tabset}
+
+The method for setting up Pattern D is included, but was unaltered from the code Dr. Bunn posted. The plot of Pattern D can be viewed in the second tab. 
+
+#### Setup of Pattern D
+
+```{r echo=T}
+n <- 100
+simDat <- rbind(data.frame(x=rnorm(n),y=rnorm(n),id="A"),
+                data.frame(x=runif(n),y=runif(n),id="B"),
+                data.frame(expand.grid(x = seq(0, 1, length.out = sqrt(n)),
+                                       y = seq(0, 1, length.out = sqrt(n))),
+                           id="C"),
+                data.frame(x=c(rnorm(n/4)-3, rnorm(n/4)-3, rnorm(n/4)+3,  rnorm(n/4)+3),
+                           y=c(rnorm(n/4)-3, rnorm(n/4)+3, rnorm(n/4)-3, rnorm(n/4)+3),
+                           id="D"))
+simDat <- simDat %>% group_by(id) %>% mutate(x = scales::rescale(x), 
+                                             y=scales::rescale(y))
+```
+
+#### Plot of Pattern D
+
+```{r echo=T}
+patternD <- simDat %>% filter(id=="D")
+patternD <- ppp(x = patternD$x, y=patternD$y,
+                xrange=c(0,1), yrange=c(0,1),
+                unitname="km")
+summary(patternD)
+plot(patternD)
+```
+
+### Ripley's K Analysis
+
+From looking at the plot of Pattern D, it seems to have four clusters located in each corner of this sample plot. An interesting pattern, for sure. Based on this, I would expect that the Ripley's K plot of these distances would show clumping at short distances, repulsion at middle distances, and clumping again at longer distances. This is because of the empty space in the middle of the graph. There are lots of points close together, none at a middle distance, and then another clump on the opposite side of the plot.
+
+```{r echo=T}
+patternD.K <- envelope(patternD, fun = Kest, nsim = n, verbose=FALSE)
+plot(patternD.K)
+```
+
+Definitely not what I predicted above. We are seeing that the points roughly start out at CSR, but then pretty quickly show more clumping as distance increases. I suppose this makes sense when considering that longer distances accounted for between points are almost certain to come into contact with other points, whereas shorter distances are less likely to have more than one point in that area, unless the point is in one of the corner clumps. Essentially, a few of the points have a lot of other points clustered around them, while most of the points do not have any others near them over a short distance. This is most obvious in the top right and bottom left corners of the plot, where a high number of points are almost overlapping, while the other points are less clustered together. This could contribute to a random-seeming effect through the distance measurement used in Ripley's K. 
+
+## Mycorrhizal Fungi
+
+### Overview
+
+The density plot of the sphorophores can be seen below. From looking at the data, the fungi do appear to show some clumping, with a lot of empty space towards the top-left corner.
+
+```{r echo=T}
+data("sporophores")
+summary(sporophores)
+```
+
+```{r echo=T}
+spor.den <- density(sporophores)
+plot(spor.den)
+points(sporophores, pch=c(16,1,2))
+```
+
+### Areas of repulsion around tree
+
+```{r echo=T}
+sporoKall <- envelope(sporophores, fun = Kest, nsim = n, verbose=FALSE)
+plot(sporoKall)
+```
+
+This is definitely unexpected. Ripley's K shows that the mycorrhizal fungi tend to be clumped, and that clumping effect is highly noticeable at medium to longer distances. The observed K is within the envelope at very close distances (~3 cm or less), which indicates random distribution in these areas, but at best, we could say that the tree has no effect on the spatial distribution of mycorrhizal fungi at distances of 3cm or less.
+
+### Inhibition between species
+
+```{r echo=T}
+sporoKsp <- alltypes(sporophores, "K", envelope = TRUE, verbose = FALSE)
+plot(sporoKsp)
+```
+
+There seems to be a mix of repulsion and clumping when separating the data by species, and the direction and magnitude varies based on the distance.  *L. pubescens* seems to mildly repel both of the other species at medium (for *Hebloma ssp.*) and longer (*L. laccata*) distances, although the effect on *Hebloma* is only slightly outside the envelope, indicating that it is not a large departure from a possible CSR distribution. All species showed clumping with their own species, and *Hebloma* and *L. laccata* showed clumping at longer distances. The hypothesis that species show inhibition with one another appears to be highly species and distance dependent, with *L. pubescens* showing the most inhibitory behavior. Possible biological mechanisms for this behavior, as well as including all five years of data, would further help to answer this question.
